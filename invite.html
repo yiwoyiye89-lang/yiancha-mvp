@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>艺安查 — 客户内测邀请函</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #1F2937; background: #F8FAFC; line-height: 1.7; }
+
+.container { max-width: 800px; margin: 0 auto; padding: 40px 24px; }
+
+/* Header */
+.header { text-align: center; padding: 48px 32px; background: linear-gradient(135deg, #1e3a5f 0%, #2563EB 100%); border-radius: 16px; color: #fff; margin-bottom: 32px; position: relative; overflow: hidden; }
+.header::before { content: ''; position: absolute; top: -50%; right: -20%; width: 300px; height: 300px; background: rgba(255,255,255,0.05); border-radius: 50%; }
+.header::after { content: ''; position: absolute; bottom: -30%; left: -10%; width: 200px; height: 200px; background: rgba(255,255,255,0.03); border-radius: 50%; }
+.header .badge { display: inline-block; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); border-radius: 100px; padding: 6px 20px; font-size: 13px; letter-spacing: 2px; margin-bottom: 20px; }
+.header h1 { font-size: 36px; font-weight: 800; margin-bottom: 12px; letter-spacing: 1px; }
+.header p { font-size: 16px; opacity: 0.85; max-width: 480px; margin: 0 auto; }
+.header .logo { font-size: 48px; font-weight: 900; letter-spacing: 4px; margin-bottom: 8px; }
+
+/* Section */
+.section { background: #fff; border-radius: 12px; padding: 32px; margin-bottom: 20px; border: 1px solid #E5E7EB; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.section h2 { font-size: 20px; font-weight: 700; color: #1e3a5f; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+.section h2 .icon { width: 32px; height: 32px; background: #EFF6FF; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+/* Pain points */
+.pain-list { list-style: none; }
+.pain-list li { padding: 12px 0; padding-left: 28px; position: relative; border-bottom: 1px solid #F3F4F6; font-size: 15px; }
+.pain-list li:last-child { border-bottom: none; }
+.pain-list li::before { content: '!'; position: absolute; left: 0; top: 12px; width: 20px; height: 20px; background: #FEE2E2; color: #EF4444; border-radius: 50%; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+/* Solution grid */
+.sol-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.sol-card { background: #F8FAFC; border: 1px solid #E5E7EB; border-radius: 10px; padding: 20px; }
+.sol-card .num { font-size: 28px; font-weight: 800; color: #2563EB; margin-bottom: 4px; }
+.sol-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.sol-card p { font-size: 13px; color: #6B7280; line-height: 1.6; }
+
+/* Pricing */
+.price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.price-card { border: 2px solid #E5E7EB; border-radius: 12px; padding: 24px 16px; text-align: center; position: relative; transition: all 0.2s; }
+.price-card.featured { border-color: #2563EB; background: #EFF6FF; }
+.price-card .tag { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #2563EB; color: #fff; font-size: 11px; padding: 3px 12px; border-radius: 100px; font-weight: 600; }
+.price-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.price-card .price { font-size: 32px; font-weight: 800; color: #2563EB; margin-bottom: 4px; }
+.price-card .period { font-size: 12px; color: #9CA3AF; margin-bottom: 16px; }
+.price-card ul { list-style: none; text-align: left; font-size: 13px; color: #4B5563; }
+.price-card ul li { padding: 4px 0; padding-left: 18px; position: relative; }
+.price-card ul li::before { content: ''; position: absolute; left: 0; top: 11px; width: 8px; height: 8px; border-radius: 50%; background: #10B981; }
+
+/* CTA */
+.cta-section { text-align: center; padding: 48px 32px; background: linear-gradient(135deg, #1e3a5f, #1D4ED8); border-radius: 16px; color: #fff; }
+.cta-section h2 { color: #fff; justify-content: center; font-size: 24px; }
+.cta-section p { opacity: 0.85; margin: 12px 0 24px; font-size: 15px; }
+.cta-link { display: inline-block; background: #fff; color: #2563EB; padding: 14px 40px; border-radius: 100px; font-size: 16px; font-weight: 700; text-decoration: none; transition: transform 0.2s, box-shadow 0.2s; }
+.cta-link:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+
+/* Demo account */
+.demo-box { background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 10px; padding: 20px; display: flex; align-items: center; gap: 16px; }
+.demo-box .key { background: #FEF3C7; padding: 4px 12px; border-radius: 6px; font-family: 'Courier New', monospace; font-weight: 700; font-size: 14px; }
+
+/* Timeline */
+.timeline { position: relative; padding-left: 28px; }
+.timeline::before { content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px; width: 2px; background: #DBEAFE; }
+.timeline .item { position: relative; margin-bottom: 20px; }
+.timeline .item:last-child { margin-bottom: 0; }
+.timeline .item::before { content: ''; position: absolute; left: -24px; top: 6px; width: 12px; height: 12px; background: #2563EB; border-radius: 50%; border: 3px solid #EFF6FF; }
+.timeline .item .label { font-size: 13px; color: #2563EB; font-weight: 600; margin-bottom: 2px; }
+.timeline .item .desc { font-size: 14px; color: #4B5563; }
+
+/* Footer */
+.footer { text-align: center; padding: 32px; color: #9CA3AF; font-size: 13px; }
+.footer a { color: #2563EB; text-decoration: none; }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .sol-grid, .price-grid { grid-template-columns: 1fr; }
+  .header h1 { font-size: 28px; }
+  .container { padding: 20px 16px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="badge">LIMITED BETA INVITATION</div>
+    <div class="logo">YC 艺安查</div>
+    <h1>艺人风险尽调一站式平台</h1>
+    <p>品牌代言安全决策的AI基础设施</p>
+  </div>
+
+  <!-- Pain Points -->
+  <div class="section">
+    <h2><span class="icon">&#x1F6A8;</span>您是否正在面临这些风险？</h2>
+    <ul class="pain-list">
+      <li>代言人突然爆出负面舆情，品牌形象一夜受损，投入的营销费用打了水漂</li>
+      <li>签约前尽调依赖人工搜索，信息碎片化、滞后，漏掉关键风险信号</li>
+      <li>艺人人设崩塌、法律纠纷、政治敏感事件频发，传统舆情监测无法覆盖深水区</li>
+      <li>粉丝经济时代，代言人的商业价值与粉丝购买力缺乏量化评估体系</li>
+      <li>危机发生后才被动应对，缺乏系统化的艺人风险评估与持续监测机制</li>
+    </ul>
+  </div>
+
+  <!-- Solution -->
+  <div class="section">
+    <h2><span class="icon">&#x1F6E1;</span>艺安查 — 您的品牌安全护城河</h2>
+    <div class="sol-grid">
+      <div class="sol-card">
+        <div class="num">4维</div>
+        <h3>风险评估体系</h3>
+        <p>政治(40%) + 法律(30%) + 道德(20%) + 商业(10%) 四维量化评分，0-100分精准画像</p>
+      </div>
+      <div class="sol-card">
+        <div class="num">900+</div>
+        <h3>艺人数据库</h3>
+        <p>覆盖S/A/B/C/D全热度等级艺人，含粉丝数据、代表作品、经纪公司等关键信息</p>
+      </div>
+      <div class="sol-card">
+        <div class="num">S/A/B/C</div>
+        <h3>商业价值评级</h3>
+        <p>量化艺人商业推荐等级，粉丝购买力分析，为代言决策提供数据支撑</p>
+      </div>
+      <div class="sol-card">
+        <div class="num">实时</div>
+        <h3>舆情监测预警</h3>
+        <p>多平台舆情实时追踪，负面事件第一时间推送，助您抢占应对先机</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pricing -->
+  <div class="section">
+    <h2><span class="icon">&#x1F4B0;</span>内测专属定价（限时优惠）</h2>
+    <div class="price-grid">
+      <div class="price-card">
+        <h3>基础版</h3>
+        <div class="price">限时免费</div>
+        <div class="period">内测期间0成本体验</div>
+        <ul>
+          <li>每日查看5位艺人详情</li>
+          <li>基础风险评分查看</li>
+          <li>公开数据浏览</li>
+        </ul>
+      </div>
+      <div class="price-card featured">
+        <div class="tag">内测推荐</div>
+        <h3>专业版</h3>
+        <div class="price">¥999<span style="font-size:16px;color:#6B7280">/年</span></div>
+        <div class="period">首发内测价，原价¥2,999</div>
+        <ul>
+          <li>每日查看20位艺人详情</li>
+          <li>完整商业价值报告</li>
+          <li>基础风险评分查看</li>
+          <li>重点高危舆情推送</li>
+        </ul>
+      </div>
+      <div class="price-card">
+        <div class="tag">旗舰版</div>
+        <h3>PRO版</h3>
+        <div class="price">¥8,999<span style="font-size:16px;color:#6B7280">/年</span></div>
+        <div class="period">原价 ¥19,999/年</div>
+        <ul>
+          <li>每日查看100位艺人详情</li>
+          <li>完整风险+商业价值报告</li>
+          <li>PDF报告一键导出</li>
+          <li>自定义舆情推送</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Demo -->
+  <div class="section">
+    <h2><span class="icon">&#x1F511;</span>立即体验</h2>
+    <div class="demo-box">
+      <div style="flex-shrink:0;">
+        <strong>演示账号</strong>
+        <div style="font-size:13px;color:#92400E;margin-top:4px;">可直接登录体验全部功能</div>
+      </div>
+      <div style="flex:1;text-align:right;">
+        <div>账号：<span class="key">demo@yiancha.com</span></div>
+        <div style="margin-top:4px;">密码：<span class="key">demo123456</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta-section">
+    <h2>&#x1F680; 立即开始使用艺安查</h2>
+    <p>访问以下链接，开启您的艺人风险尽调之旅</p>
+    <a class="cta-link" href="https://yiancha.netlify.app" target="_blank">yiancha.netlify.app</a>
+  </div>
+
+  <!-- Roadmap -->
+  <div class="section">
+    <h2><span class="icon">&#x1F4CA;</span>产品路线图</h2>
+    <div class="timeline">
+      <div class="item">
+        <div class="label">当前 — 内测阶段 (MVP)</div>
+        <div class="desc">900+艺人数据库、四维风险评估、商业价值评级、在线搜索筛选</div>
+      </div>
+      <div class="item">
+        <div class="label">Q3 2026 — 数据深化</div>
+        <div class="desc">实时舆情监测、负面事件预警推送、历史舆情回溯分析</div>
+      </div>
+      <div class="item">
+        <div class="label">Q4 2026 — 报告升级</div>
+        <div class="desc">AI生成定制尽调报告、竞品艺人对比分析、行业趋势洞察</div>
+      </div>
+      <div class="item">
+        <div class="label">2027 — 平台化</div>
+        <div class="desc">API开放平台、企业SaaS对接、CRM集成、品牌方协作工作流</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target -->
+  <div class="section">
+    <h2><span class="icon">&#x1F465;</span>适用场景</h2>
+    <div class="sol-grid">
+      <div class="sol-card">
+        <h3>品牌方 / 市场部</h3>
+        <p>代言人筛选与风险评估、品牌联名安全审核、营销活动艺人背调</p>
+      </div>
+      <div class="sol-card">
+        <h3>MCN / 经纪公司</h3>
+        <p>签约前艺人尽调、旗下艺人风险画像、舆情危机预警与应对</p>
+      </div>
+      <div class="sol-card">
+        <h3>影视综艺公司</h3>
+        <p>选角风险评估、综艺嘉宾背调、IP合作方资信评估</p>
+      </div>
+      <div class="sol-card">
+        <h3>公关代理公司</h3>
+        <p>为客户提供专业尽调服务、危机公关数据支撑、竞品艺人监控</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>艺安查 &copy; 2026 &nbsp;|&nbsp; <a href="https://yiancha.netlify.app" target="_blank">yiancha.netlify.app</a></p>
+    <p style="margin-top:8px;">本产品目前处于内测阶段，如需企业定制方案或合作咨询，请直接联系</p>
+    <p style="margin-top:6px; font-weight:600; color:#2563EB;">📧 626964309@qq.com</p>
+  </div>
+
+</div>
+</body>
+</html>
