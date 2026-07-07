@@ -156,8 +156,11 @@ const App = {
     if (this.state.token) {
       headers['Authorization'] = `Bearer ${this.state.token}`;
     }
+    // 15s 超时：避免 Render 免费版冷启动(30-60s)时 UI 长时间干等
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
-      const resp = await fetch(url, { ...options, headers });
+      const resp = await fetch(url, { ...options, headers, signal: controller.signal });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(err.detail || `HTTP ${resp.status}`);
@@ -166,6 +169,8 @@ const App = {
     } catch (e) {
       console.error('API Error:', e);
       throw e;
+    } finally {
+      clearTimeout(timeoutId);
     }
   },
 
@@ -1682,9 +1687,7 @@ const App = {
     if (!canvas) return;
 
     try {
-      const resp = await fetch(`${this.API_BASE}/commercial/trend/${artistId}?months=12`);
-      if (!resp.ok) throw new Error('趋势数据获取失败');
-      const data = await resp.json();
+      const data = await this.api(`/commercial/trend/${artistId}?months=12`);
       const trend = data.trend || [];
 
       if (trend.length < 2) {
@@ -1780,10 +1783,9 @@ const App = {
 
       for (const name of names) {
         try {
-          const resp = await fetch(`${this.API_BASE}/artists/search?keyword=${encodeURIComponent(name)}&limit=1`);
-          if (resp.ok) {
-            const data = await resp.json();
-            const items = data.items || data.results || data;
+        const data = await this.api(`/artists/search?keyword=${encodeURIComponent(name)}&limit=1`).catch(() => null);
+        if (data) {
+          const items = data.items || data.results || data;
             if (items && items.length > 0) {
               const found = items[0];
               const id = found.id || found.artist_id;
@@ -1804,9 +1806,7 @@ const App = {
       }
 
       // 2. Call compare API
-      const resp = await fetch(`${this.API_BASE}/commercial/compare?ids=${artistIds.join(',')}`);
-      if (!resp.ok) throw new Error('对比API调用失败');
-      const data = await resp.json();
+      const data = await this.api(`/commercial/compare?ids=${artistIds.join(',')}`);
 
       // 3. Render comparison results
       this.renderCompareChart(data.results || data.compared_artists);
@@ -1920,9 +1920,7 @@ const App = {
       const params = new URLSearchParams({ brand_tone: tone, exclude_risky: 'true', limit: '5' });
       if (gender) params.set('gender', gender);
 
-      const resp = await fetch(`${this.API_BASE}/commercial/recommend?${params}`);
-      if (!resp.ok) throw new Error('推荐服务暂时不可用');
-      const data = await resp.json();
+      const data = await this.api(`/commercial/recommend?${params}`);
       const recs = data.recommendations || [];
 
       if (recs.length === 0) {
