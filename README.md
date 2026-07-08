@@ -47,9 +47,12 @@ python -m http.server 8000
 ## 部署
 
 - **生产环境**：Netlify 静态托管，`yiancha.netlify.app` 已绑定。
-- 本地构建产物即源码（无编译），部署目录为仓库根。
-- 标准发布：`netlify deploy --prod --dir=.`（需有效 Netlify Personal Access Token）。
-- 也可在 Netlify 后台直接关联 GitHub 仓库 `yiwoyiye89-lang/yiancha-mvp` 实现 push 即部署。
+- 本地即源码（无编译），部署目录为仓库根。
+- **部署配置**（`netlify.toml`）：已配置安全响应头（CSP / X-Frame-Options 等）、HTML 不缓存（上线即时生效）、静态资源分级缓存。
+- **标准发布脚本**：`python deploy.py`（使用有效 Netlify Token，部署完整文件集含 `artists.json`，带重试）。
+  - 也可在 Netlify 后台关联 GitHub 仓库 `yiwoyiye89-lang/yiancha-mvp` 实现 push 即部署。
+  - 旧 `deploy_v3.py` 已弃用。
+- **回滚**：Netlify 后台 Deploys 页将任一历史 deploy 标记为 Published 即可秒级回滚。
 
 ## 版本记录
 
