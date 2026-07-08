@@ -1,0 +1,40 @@
+# ============================================================
+# 艺安查前端部署配置（Netlify）
+# 纯静态站点，无构建步骤；部署目录为仓库根。
+# 本文件随部署包上传后由 Netlify 读取生效（安全头 / 缓存 / 重定向）。
+# ============================================================
+
+[build]
+  publish = "."
+
+# ---- 全局安全响应头 ----
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-XSS-Protection = "1; mode=block"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' fonts.googleapis.com cdn.jsdelivr.net; font-src 'self' fonts.gstatic.com fonts.googleapis.com; img-src 'self' data: https:; connect-src 'self' https://yiancha-backend.onrender.com; worker-src 'self' blob:; frame-src 'self' blob:"
+
+# ---- 缓存策略：HTML 不缓存（保证上线即时生效）----
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/app.js"
+  [headers.values]
+    Cache-Control = "public, max-age=300"
+
+[[headers]]
+  for = "/*.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/design/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
