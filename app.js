@@ -46,54 +46,57 @@ const ENDORSE_CATEGORIES = {
   };
 
   // 字体配置 - 现代感（Chart.js 4.x 只接受部分 family/size，weight 在 scale 级单独配置）
-  if (Chart.defaults && Chart.defaults.font) {
-    Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif";
-    Chart.defaults.font.size = 13;
-  }
+  try {
+    if (Chart.defaults && Chart.defaults.font) {
+      Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif";
+      Chart.defaults.font.size = 13;
+    }
+  } catch (e) { console.warn('Font defaults update failed:', e); }
 
-  // 工具提示优化 - 玻璃态效果（合并而非覆盖，避免丢失默认回调）
-  if (Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.tooltip) {
-    const base = Chart.defaults.plugins.tooltip;
-    Chart.defaults.plugins.tooltip = Object.assign({}, base, {
-      backgroundColor: 'rgba(15, 23, 42, 0.92)',
-      titleFont: { weight: 'bold', size: 14, family: "'Inter', sans-serif" },
-      bodyFont: { weight: 'normal', size: 13, family: "'Inter', sans-serif" },
-      padding: 14,
-      cornerRadius: 10,
-      displayColors: true,
-      boxPadding: 6,
-      borderColor: 'rgba(99, 102, 241, 0.3)',
-      borderWidth: 1,
-      caretSize: 8,
-      caretPadding: 8,
-      titleMarginBottom: 8,
-      bodySpacing: 6
-    });
-  }
+  // 工具提示优化 - 仅修改字段，不替换整个对象避免丢失默认回调
+  try {
+    if (Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.tooltip) {
+      const tt = Chart.defaults.plugins.tooltip;
+      tt.backgroundColor = 'rgba(15, 23, 42, 0.92)';
+      tt.titleFont = { weight: 'bold', size: 14, family: "'Inter', sans-serif" };
+      tt.bodyFont = { weight: 'normal', size: 13, family: "'Inter', sans-serif" };
+      tt.padding = 14;
+      tt.cornerRadius = 10;
+      tt.displayColors = true;
+      tt.boxPadding = 6;
+      tt.borderColor = 'rgba(99, 102, 241, 0.3)';
+      tt.borderWidth = 1;
+      tt.caretSize = 8;
+      tt.caretPadding = 8;
+      tt.titleMarginBottom = 8;
+      tt.bodySpacing = 6;
+    }
+  } catch (e) { console.warn('Tooltip defaults update failed:', e); }
 
-  // 图例优化（合并而非覆盖）
-  if (Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.legend) {
-    const base = Chart.defaults.plugins.legend;
-    Chart.defaults.plugins.legend = Object.assign({}, base, {
-      display: true,
-      position: 'bottom',
-      labels: {
-        usePointStyle: true,
-        pointStyle: 'circle',
-        padding: 20,
-        font: { size: 13, weight: 'normal', family: "'Inter', sans-serif" },
-        color: '#475569'
-      }
-    });
-  }
+  // 图例优化 - 仅修改字段，不替换整个对象
+  try {
+    if (Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.legend) {
+      const legend = Chart.defaults.plugins.legend;
+      legend.display = true;
+      legend.position = 'bottom';
+      if (!legend.labels) legend.labels = {};
+      legend.labels.usePointStyle = true;
+      legend.labels.pointStyle = 'circle';
+      legend.labels.padding = 20;
+      legend.labels.font = { size: 13, weight: 'normal', family: "'Inter', sans-serif" };
+      legend.labels.color = '#475569';
+    }
+  } catch (e) { console.warn('Legend defaults update failed:', e); }
 
   // 响应式优化
   Chart.defaults.responsive = true;
   Chart.defaults.maintainAspectRatio = false;
-  Chart.defaults.plugins.decimation = {
-    enabled: true,
-    algorithm: 'lttb'
-  };
+  if (Chart.defaults && Chart.defaults.plugins) {
+    Chart.defaults.plugins.decimation = {
+      enabled: true,
+      algorithm: 'lttb'
+    };
+  }
 
   // 颜色配置 - 匹配新设计系统
   Chart.defaults.color = '#64748B';
@@ -2146,6 +2149,7 @@ const App = {
   drawEventTimeline(events) {
     const canvas = document.getElementById('eventTimelineCanvas');
     if (!canvas || !events || events.length === 0) return;
+    try {
     const ctx = canvas.getContext('2d');
 
     // Group events by type and sort by date
@@ -2203,10 +2207,14 @@ const App = {
         }
       }
     });
+    } catch (e) {
+      console.error('Event timeline chart error:', e);
+    }
   },
 
   // ---- Fan Profile Pie Charts ----
   drawFanProfileCharts(a) {
+    try {
     const genderCanvas = document.getElementById('fanGenderChart');
     const ageCanvas = document.getElementById('fanAgeChart');
     if (!genderCanvas && !ageCanvas) return;
@@ -2283,6 +2291,9 @@ const App = {
     if (ageCanvas) {
       if (this.state.fanAgeChart) { this.state.fanAgeChart.destroy(); }
       this.state.fanAgeChart = new Chart(ageCanvas, { type: 'pie', data: ageData, options: chartOpts });
+    }
+    } catch (e) {
+      console.error('Fan profile chart error:', e);
     }
   },
 
@@ -2456,6 +2467,7 @@ const App = {
     // Draw grouped bar chart
     const canvas = document.getElementById('compareBarChart');
     if (!canvas) return;
+    try {
     if (this.state.compareChart) this.state.compareChart.destroy();
 
     // Try to extract sub-scores if available
@@ -2498,6 +2510,9 @@ const App = {
         }
       }
     });
+    } catch (e) {
+      console.error('Compare chart error:', e);
+    }
   },
 
   heatToScore(level) {
