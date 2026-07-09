@@ -2,6 +2,9 @@
    艺安查 MVP v2.1 — app.js (优化版 + 离线兜底)
    ============================================ */
 
+// === 当前前端版本号（Task #3: 与 version.json 比对，发现新版本弹刷新提示） ===
+const APP_VERSION = '2.4.0';
+
 // === 内置10人示例数据（离线兜底，API不可用时即时体验） ===
 const OFFLINE_DEMO_DATA = [
   {"name":"赵丽颖","gender":"女","age":35,"constellation":"天秤座","heat_level":"S","fan_name":"颖火虫","weibo_fans":8625,"douyin_fans":2356,"risk_level":"低风险","risk_total_score":18,"political_risk":5,"legal_risk":3,"moral_risk":7,"commercial_risk":3,"risk_summary":"无重大负面记录，公众形象良好。","agency":"和颂传媒","personality_tags":"实力派演员,勤奋努力,国民度高","representative_works":"《花千骨》《楚乔传》《知否》","historical_endorsements":"巴黎欧莱雅,佳洁士,蒙牛","commercial_quote":1200,"fan_purchasing_power":"S","black_nicknames":"赵小刀","style_tone":"优雅,气质,实力"},
@@ -143,6 +146,50 @@ const App = {
     this.restoreUser();
     this.loadRiskWeights();
     this.route();
+    // Task #3: 启动版本检查（解决详情页偶发缓存问题）
+    this.checkForUpdate();
+  },
+
+  // ---- 版本自动刷新检查（Task #3） ----
+  // 轮询根目录 version.json，若服务端版本高于本地 APP_VERSION，弹「立即刷新」提示。
+  // 配合 index.html 的 #updateBanner 与 ?v= 缓存破除，确保用户无需手动强刷即可拿到新 JS。
+  _updateTimer: null,
+  checkForUpdate() {
+    if (this._updateTimer) clearInterval(this._updateTimer);
+    const check = () => {
+      fetch('version.json?_=' + Date.now(), { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d || !d.version) return;
+          // 简单的语义化版本比较（x.y.z），新版本号更大则提示刷新
+          if (this._compareVersion(d.version, APP_VERSION) > 0) {
+            const banner = document.getElementById('updateBanner');
+            if (banner && banner.style.display !== 'block') {
+              banner.style.display = 'flex';
+              console.log(`[update] 发现新版本 ${d.version}（当前 ${APP_VERSION}），已提示刷新`);
+            }
+          }
+        })
+        .catch(() => { /* 网络失败静默，下次轮询再试 */ });
+    };
+    check(); // 立即检查一次
+    this._updateTimer = setInterval(check, 60000); // 每 60s 轮询
+  },
+  _compareVersion(v1, v2) {
+    const a = String(v1).split('.').map(n => parseInt(n, 10) || 0);
+    const b = String(v2).split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const x = a[i] || 0, y = b[i] || 0;
+      if (x > y) return 1;
+      if (x < y) return -1;
+    }
+    return 0;
+  },
+  // 用户点击「立即刷新」：绕过缓存重新加载页面与最新 JS
+  doRefresh() {
+    // 清除本地缓存的静态资源标记，强制拉取新 app.js
+    const url = location.href.split('#')[0] + '?v=' + Date.now() + (location.hash || '');
+    location.replace(url);
   },
 
   // 拉取风险模型权重配置（驱动详情页「权重X%」动态展示，与后端一致）
@@ -1565,7 +1612,7 @@ const App = {
           <div class="card mt-6">
             <div class="card-header">基本信息</div>
             <div class="card-body">
-              <table class="data-table">
+              <div class="table-responsive"><table class="data-table">
                 <tr><td style="width:120px;color:var(--text-secondary);">姓名</td><td>${a.name || '-'}</td></tr>
                 <tr><td style="color:var(--text-secondary);">性别</td><td>${a.gender || '-'}</td></tr>
                 <tr><td style="color:var(--text-secondary);">年龄</td><td>${a.age ? a.age + '岁' : '-'}${a.birthday ? '（' + a.birthday + '）' : ''}</td></tr>
@@ -1577,7 +1624,7 @@ const App = {
                 <tr><td style="color:var(--text-secondary);">代表作</td><td>${a.masterpieces || '-'}</td></tr>
                 ${a.commercial_quote ? `<tr><td style="color:var(--text-secondary);">商务报价</td><td style="font-weight:600;color:var(--primary);">${a.commercial_quote}</td></tr>` : ''}
                 <tr><td style="color:var(--text-secondary);">数据来源</td><td>${a.data_source || '公开信息'}</td></tr>
-              </table>
+              </table></div>
             </div>
           </div>
         </div>
@@ -1605,12 +1652,12 @@ const App = {
             <div class="card">
               <div class="card-header">商务信息</div>
               <div class="card-body">
-                <table class="data-table">
+                <div class="table-responsive"><table class="data-table">
                   <tr><td style="color:var(--text-secondary);">商务报价</td><td style="font-weight:600;color:var(--primary);">${a.commercial_quote || '-'}</td></tr>
                   <tr><td style="color:var(--text-secondary);">经纪公司</td><td>${a.agency || '-'}</td></tr>
                   <tr><td style="color:var(--text-secondary);">历史代言</td><td>${a.brand_history || '-'}</td></tr>
                   <tr><td style="color:var(--text-secondary);">粉丝购买力</td><td>${a.fans_purchase_level || '-'}</td></tr>
-                </table>
+                </table></div>
               </div>
             </div>
             <div class="card">
@@ -1684,12 +1731,12 @@ const App = {
           <div class="card">
             <div class="card-header">粉丝详细信息</div>
             <div class="card-body">
-              <table class="data-table">
+              <div class="table-responsive"><table class="data-table">
                 <tr><td style="width:140px;color:var(--text-secondary);">官方粉丝名</td><td><strong>${a.fans_name || '-'}</strong>${a.fans_name_verified ? ' <span class="tag tag-risk-safe" style="font-size:11px;padding:1px 6px;">已验证</span>' : ''}</td></tr>
                 <tr><td style="color:var(--text-secondary);">微博粉丝</td><td><strong>${this.formatFans(a.weibo_fans)}</strong></td></tr>
                 <tr><td style="color:var(--text-secondary);">抖音粉丝</td><td><strong>${this.formatFans(a.douyin_fans)}</strong></td></tr>
                 <tr><td style="color:var(--text-secondary);">粉丝购买力</td><td><span class="tag tag-risk-safe">${a.fans_purchase_level || '-'}</span></td></tr>
-              </table>
+              </table></div>
             </div>
           </div>
         </div>
@@ -2446,7 +2493,7 @@ const App = {
       <div style="margin-bottom:16px;">
         <canvas id="compareBarChart" height="250"></canvas>
       </div>
-      <table class="data-table" style="font-size:13px;">
+      <div class="table-responsive"><table class="data-table" style="font-size:13px;">
         <thead>
           <tr>
             <th>艺人</th><th>商业评分</th><th>热度</th><th>风险等级</th><th>报价</th><th>微博粉丝</th>
@@ -2464,7 +2511,7 @@ const App = {
             </tr>
           `).join('')}
         </tbody>
-      </table>
+      </table></div>
     `;
 
     // Draw grouped bar chart
@@ -3037,7 +3084,7 @@ const App = {
         el.innerHTML = `<div class="text-tertiary text-sm" style="padding:12px 0;">暂无监控艺人，请在上方添加。</div>`;
         return;
       }
-      el.innerHTML = `<table class="data-table"><thead><tr><th>艺人</th><th>渠道</th><th>新增事件</th><th></th></tr></thead><tbody>` +
+      el.innerHTML = `<div class="table-responsive"><table class="data-table"><thead><tr><th>艺人</th><th>渠道</th><th>新增事件</th><th></th></tr></thead><tbody>` +
         d.configs.map(c => {
           const chans = (c.channels || []).map(ch => ch === 'email' ? '📧邮件' : (ch === 'webhook' ? '🔗Webhook' : ch)).join(' ');
           const wh = c.webhook_url_masked ? `<div class="text-tertiary text-xs" style="margin-top:2px;">${c.webhook_url_masked}</div>` : '';
@@ -3050,7 +3097,7 @@ const App = {
             <td><button class="btn btn-ghost btn-xs" onclick="App.monitorUnsubscribe(${c.id})">取消</button></td>
           </tr>`;
         }).join('') +
-        `</tbody></table>`;
+        `</tbody></table></div>`;
     } catch (e) {
       el.innerHTML = `<div class="text-tertiary text-sm" style="padding:12px 0;">监控列表加载失败</div>`;
     }
