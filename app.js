@@ -45,41 +45,47 @@ const ENDORSE_CATEGORIES = {
     delay: (context) => context.dataIndex * 80
   };
 
-  // 字体配置 - 现代感
-  Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif";
-  Chart.defaults.font.size = 13;
-  Chart.defaults.font.weight = '500';
+  // 字体配置 - 现代感（Chart.js 4.x 只接受部分 family/size，weight 在 scale 级单独配置）
+  if (Chart.defaults && Chart.defaults.font) {
+    Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif";
+    Chart.defaults.font.size = 13;
+  }
 
-  // 工具提示优化 - 玻璃态效果
-  Chart.defaults.plugins.tooltip = {
-    enabled: true,
-    backgroundColor: 'rgba(15, 23, 42, 0.92)',
-    titleFont: { weight: '700', size: 14, family: "'Inter', sans-serif" },
-    bodyFont: { weight: '400', size: 13, family: "'Inter', sans-serif" },
-    padding: 14,
-    cornerRadius: 10,
-    displayColors: true,
-    boxPadding: 6,
-    borderColor: 'rgba(99, 102, 241, 0.3)',
-    borderWidth: 1,
-    caretSize: 8,
-    caretPadding: 8,
-    titleMarginBottom: 8,
-    bodySpacing: 6
-  };
+  // 工具提示优化 - 玻璃态效果（合并而非覆盖，避免丢失默认回调）
+  if (Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.tooltip) {
+    const base = Chart.defaults.plugins.tooltip;
+    Chart.defaults.plugins.tooltip = Object.assign({}, base, {
+      backgroundColor: 'rgba(15, 23, 42, 0.92)',
+      titleFont: { weight: 'bold', size: 14, family: "'Inter', sans-serif" },
+      bodyFont: { weight: 'normal', size: 13, family: "'Inter', sans-serif" },
+      padding: 14,
+      cornerRadius: 10,
+      displayColors: true,
+      boxPadding: 6,
+      borderColor: 'rgba(99, 102, 241, 0.3)',
+      borderWidth: 1,
+      caretSize: 8,
+      caretPadding: 8,
+      titleMarginBottom: 8,
+      bodySpacing: 6
+    });
+  }
 
-  // 图例优化
-  Chart.defaults.plugins.legend = {
-    display: true,
-    position: 'bottom',
-    labels: {
-      usePointStyle: true,
-      pointStyle: 'circle',
-      padding: 20,
-      font: { size: 13, weight: '500', family: "'Inter', sans-serif" },
-      color: '#475569'
-    }
-  };
+  // 图例优化（合并而非覆盖）
+  if (Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.legend) {
+    const base = Chart.defaults.plugins.legend;
+    Chart.defaults.plugins.legend = Object.assign({}, base, {
+      display: true,
+      position: 'bottom',
+      labels: {
+        usePointStyle: true,
+        pointStyle: 'circle',
+        padding: 20,
+        font: { size: 13, weight: 'normal', family: "'Inter', sans-serif" },
+        color: '#475569'
+      }
+    });
+  }
 
   // 响应式优化
   Chart.defaults.responsive = true;
