@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -1354,6 +1354,23 @@ body {
 }
 
 /* === Responsive === */
+/* 顶部导航安全区 + 移动端不溢出 */
+.top-nav {
+  padding-top: env(safe-area-inset-top, 0);
+  height: calc(64px + env(safe-area-inset-top, 0));
+}
+.page-wrap { padding-bottom: env(safe-area-inset-bottom, 0); }
+
+.nav-label { display: inline; }
+
+/* 图表容器：移动端自适应宽度，避免溢出 */
+.chart-box { position: relative; width: 100%; }
+canvas { max-width: 100%; }
+
+/* 表格移动端横向滚动容器 */
+.table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-responsive .data-table { min-width: 460px; }
+
 @media (max-width: 768px) {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   .hero-section { padding: 64px 16px 48px; }
@@ -1361,21 +1378,48 @@ body {
   .hero-search-wrap { max-width: 100%; }
   .hero-hot { gap: 12px; flex-wrap: wrap; }
   .page-content { padding: var(--space-4); }
-  .top-nav { padding: 0 var(--space-4); gap: var(--space-2); }
-  .top-nav .nav-search { max-width: 200px; }
+  .top-nav { padding-left: var(--space-3); padding-right: var(--space-3); gap: var(--space-2); }
+  .top-nav .nav-search { max-width: 180px; }
+  .top-nav .nav-right { gap: 2px; }
+  .nav-btn { padding: 8px 10px; margin-right: 2px !important; }
   .detail-header-inner { gap: 16px; padding: 16px; }
   .detail-avatar { width: 72px; height: 72px; font-size: 28px; }
   .detail-title-row h1 { font-size: 24px; }
   .detail-score-big { font-size: 42px; }
-  .detail-tab-item { padding: 12px 16px; font-size: 14px; }
+  .detail-tab-item { padding: 12px 14px; font-size: 14px; }
   .artist-card { padding: var(--space-4); gap: var(--space-4); }
   .artist-avatar { width: 56px; height: 56px; font-size: 22px; }
   .artist-score { font-size: 26px; }
+  .data-table th, .data-table td { padding: 12px 14px; }
+  /* 详情页 Tab 横向滚动，避免挤换行 */
+  .detail-tabs-inner { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+  /* 详情头部评分区在窄屏整行居中 */
+  .detail-score-area { text-align: center; }
+}
+
+@media (max-width: 600px) {
+  /* 手机端导航按钮仅显示图标，防止溢出 */
+  .nav-label { display: none; }
+  .nav-btn { padding: 8px; margin-right: 0 !important; }
+  .top-nav .nav-right { gap: 0; }
+  .top-nav .nav-search { display: none; }
+  .user-area .plan-tag { display: none; }
+  .toast-container { right: 12px; left: 12px; }
+  .toast { max-width: none; }
+  .detail-header-inner { flex-direction: column; text-align: center; }
+  .detail-meta { min-width: 0; }
+  .detail-stats { justify-content: center; }
+  .detail-score-area { width: 100%; }
+  .modal { width: 94%; }
+  .modal-lg { width: 94%; }
 }
 
 @media (max-width: 480px) {
-  .top-nav .nav-search { display: none; }
   .hero-hot { display: none; }
+  .hero-title { font-size: 26px; }
+  .detail-title-row h1 { font-size: 22px; }
+  .detail-score-big { font-size: 38px; }
+  .artist-score { font-size: 24px; }
 }
 
 /* === Animations === */
@@ -1632,14 +1676,14 @@ body {
     <input type="text" id="navSearch" placeholder="搜索艺人、经纪公司、代表作..." onkeydown="if(event.key==='Enter'){App.navigate('home');document.getElementById('heroSearch').value=this.value;App.doSearch();}">
   </div>
   <div class="nav-right">
-    <button class="btn btn-ghost btn-sm" onclick="App.navigate('monitoring')" style="margin-right:12px;">
-      <span style="font-size:16px;">🔔</span> 监控告警
+    <button class="btn btn-ghost btn-sm nav-btn" onclick="App.navigate('monitoring')" style="margin-right:6px;">
+      <span style="font-size:16px;">🔔</span><span class="nav-label">监控告警</span>
     </button>
-    <button class="btn btn-ghost btn-sm" onclick="App.openBusinessModal()" style="margin-right:12px;">
-      <span style="font-size:16px;">💼</span> 商务合作
+    <button class="btn btn-ghost btn-sm nav-btn" onclick="App.openBusinessModal()" style="margin-right:6px;">
+      <span style="font-size:16px;">💼</span><span class="nav-label">商务合作</span>
     </button>
-    <button class="btn btn-ghost btn-sm" onclick="App.openAdminLogin()" style="margin-right:12px;">
-      <span style="font-size:16px;">⚙</span> 管理
+    <button class="btn btn-ghost btn-sm nav-btn" onclick="App.openAdminLogin()" style="margin-right:6px;">
+      <span style="font-size:16px;">⚙</span><span class="nav-label">管理</span>
     </button>
     <div id="userArea"></div>
   </div>
@@ -1836,6 +1880,13 @@ body {
 <!-- Hidden file input for Excel import (offline fallback) -->
 <input type="file" id="offlineFileInput" accept=".xlsx,.xls" style="display:none;">
 
-<script src="app.js?v=2.3.3"></script>
+<!-- Version update banner (Task #3: 缓存自动刷新提示) -->
+<div id="updateBanner" style="display:none; position:fixed; left:0; right:0; bottom:0; z-index:6000; background:linear-gradient(135deg,var(--primary),var(--primary-dark)); color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:center; gap:12px; font-size:14px; box-shadow:0 -4px 16px rgba(0,0,0,0.18);">
+  <span>🎉 检测到新版本，建议刷新以体验最新功能</span>
+  <button class="btn btn-sm" style="background:rgba(255,255,255,0.2); color:#fff; border:none; padding:6px 16px;" onclick="App.doRefresh()">立即刷新</button>
+  <button class="btn btn-sm" style="background:transparent; color:rgba(255,255,255,0.8); border:none; padding:6px 10px;" onclick="document.getElementById('updateBanner').style.display='none'">稍后</button>
+</div>
+
+<script src="app.js?v=2.4.0"></script>
 </body>
 </html>
