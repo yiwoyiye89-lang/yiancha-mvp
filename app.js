@@ -1516,7 +1516,7 @@ const App = {
               <div class="card-header">四维风险评估</div>
               <div class="card-body text-center">
                 <div style="max-width:320px;margin:0 auto;">
-                  <canvas id="radarCanvas"></canvas>
+                  <canvas id="radarCanvas" width="320" height="240"></canvas>
                 </div>
                 <p class="text-sm text-secondary mt-4">评分越高，风险越低</p>
               </div>
@@ -1605,7 +1605,7 @@ const App = {
               <div class="card-header">商业价值雷达</div>
               <div class="card-body text-center">
                 <div style="max-width:280px;margin:0 auto;">
-                  <canvas id="commercialRadarCanvas"></canvas>
+                  <canvas id="commercialRadarCanvas" width="320" height="240"></canvas>
                 </div>
               </div>
             </div>
@@ -1945,43 +1945,58 @@ const App = {
       this.state.radarChart.destroy();
       this.state.radarChart = null;
     }
-    const ctx = canvas.getContext('2d');
-    this.state.radarChart = new Chart(ctx, {
-      type: 'radar',
-      data: {
-        labels: ['政治风险', '法律风险', '道德风险', '商业风险'],
-        datasets: [{
-          label: '风险评分',
-          data: [a.risk_political ?? 0, a.risk_legal ?? 0, a.risk_moral ?? 0, a.risk_commercial ?? 0],
-          backgroundColor: 'rgba(37, 99, 235, 0.15)',
-          borderColor: 'rgba(37, 99, 235, 0.8)',
-          borderWidth: 2,
-          pointBackgroundColor: '#2563EB',
-          pointRadius: 4,
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          r: {
-            beginAtZero: true,
-            max: 100,
-            ticks: { stepSize: 20, font: { size: 10 }, color: '#9CA3AF' },
-            grid: { color: '#E5E7EB' },
-            pointLabels: { font: { size: 13, weight: '500' }, color: '#4B5563' },
-            angleLines: { color: '#E5E7EB' },
-          }
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `${ctx.label}: ${ctx.raw}/100`
+    const draw = () => {
+      try {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        // 确保 canvas 有有效尺寸（GitHub Pages 下首次渲染可能 0x0）
+        if (canvas.width === 0 || canvas.height === 0) {
+          canvas.width = 320;
+          canvas.height = 240;
+        }
+        this.state.radarChart = new Chart(ctx, {
+          type: 'radar',
+          data: {
+            labels: ['政治风险', '法律风险', '道德风险', '商业风险'],
+            datasets: [{
+              label: '风险评分',
+              data: [a.risk_political ?? 0, a.risk_legal ?? 0, a.risk_moral ?? 0, a.risk_commercial ?? 0],
+              backgroundColor: 'rgba(37, 99, 235, 0.15)',
+              borderColor: 'rgba(37, 99, 235, 0.8)',
+              borderWidth: 2,
+              pointBackgroundColor: '#2563EB',
+              pointRadius: 4,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+              r: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { stepSize: 20, color: '#9CA3AF', backdropColor: 'transparent' },
+                grid: { color: '#E5E7EB' },
+                pointLabels: { font: { size: 13, weight: '500' }, color: '#4B5563' },
+                angleLines: { color: '#E5E7EB' },
+              }
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => `${ctx.label}: ${ctx.raw}/100`
+                }
+              }
             }
           }
-        }
+        });
+      } catch (e) {
+        console.error('Radar chart error:', e);
       }
-    });
+    };
+    // 延迟到下一帧，确保 canvas 已参与 layout
+    requestAnimationFrame(draw);
   },
 
   drawCommercialRadar(a, scoreData) {
@@ -2027,34 +2042,48 @@ const App = {
       })();
     }
 
-    this.state.commercialRadarChart = new Chart(ctx, {
-      type: 'radar',
-      data: {
-        labels: ['热度等级', '粉丝量级', '商务报价', '粉丝购买力'],
-        datasets: [{
-          label: '商业价值',
-          data: [heatScore, fansScore, quoteScore, purchaseScore],
-          backgroundColor: 'rgba(139, 92, 246, 0.15)',
-          borderColor: 'rgba(139, 92, 246, 0.8)',
-          borderWidth: 2,
-          pointBackgroundColor: '#8B5CF6',
-          pointRadius: 4,
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          r: {
-            beginAtZero: true, max: 100,
-            ticks: { stepSize: 25, font: { size: 10 }, color: '#9CA3AF' },
-            grid: { color: '#E5E7EB' },
-            pointLabels: { font: { size: 12, weight: '500' }, color: '#4B5563' },
-            angleLines: { color: '#E5E7EB' },
+    const draw = () => {
+      try {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        if (canvas.width === 0 || canvas.height === 0) {
+          canvas.width = 320;
+          canvas.height = 240;
+        }
+        this.state.commercialRadarChart = new Chart(ctx, {
+          type: 'radar',
+          data: {
+            labels: ['热度等级', '粉丝量级', '商务报价', '粉丝购买力'],
+            datasets: [{
+              label: '商业价值',
+              data: [heatScore, fansScore, quoteScore, purchaseScore],
+              backgroundColor: 'rgba(139, 92, 246, 0.15)',
+              borderColor: 'rgba(139, 92, 246, 0.8)',
+              borderWidth: 2,
+              pointBackgroundColor: '#8B5CF6',
+              pointRadius: 4,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+              r: {
+                beginAtZero: true, max: 100,
+                ticks: { stepSize: 25, color: '#9CA3AF', backdropColor: 'transparent' },
+                grid: { color: '#E5E7EB' },
+                pointLabels: { font: { size: 12, weight: '500' }, color: '#4B5563' },
+                angleLines: { color: '#E5E7EB' },
+              }
+            },
+            plugins: { legend: { display: false } }
           }
-        },
-        plugins: { legend: { display: false } }
+        });
+      } catch (e) {
+        console.error('Commercial radar chart error:', e);
       }
-    });
+    };
+    requestAnimationFrame(draw);
   },
 
   // ---- 商业价值评分懒加载（对接 /commercial/score，401/402 由 api() 统一拦截）----
