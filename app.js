@@ -45,7 +45,7 @@ const ENDORSE_CATEGORIES = {
     delay: (context) => context.dataIndex * 80
   };
 
-  // 字体配置 - 现代感（Chart.js 4.x 只接受部分 family/size，weight 在 scale 级单独配置）
+  // 字体配置 - 只设置安全字段（Chart.js 4.x 中 font 对象本身不可整体替换，否则内部 FontSpec 解析会丢失）
   try {
     if (Chart.defaults && Chart.defaults.font) {
       Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif";
@@ -53,13 +53,15 @@ const ENDORSE_CATEGORIES = {
     }
   } catch (e) { console.warn('Font defaults update failed:', e); }
 
-  // 工具提示优化 - 仅修改字段，不替换整个对象避免丢失默认回调
+  // 工具提示优化 - 仅修改字段；titleFont/bodyFont 必须保留原对象再合并
   try {
     if (Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.tooltip) {
       const tt = Chart.defaults.plugins.tooltip;
       tt.backgroundColor = 'rgba(15, 23, 42, 0.92)';
-      tt.titleFont = { weight: 'bold', size: 14, family: "'Inter', sans-serif" };
-      tt.bodyFont = { weight: 'normal', size: 13, family: "'Inter', sans-serif" };
+      if (tt.titleFont) Object.assign(tt.titleFont, { weight: 'bold', size: 14, family: "'Inter', sans-serif" });
+      else tt.titleFont = { weight: 'bold', size: 14, family: "'Inter', sans-serif" };
+      if (tt.bodyFont) Object.assign(tt.bodyFont, { weight: 'normal', size: 13, family: "'Inter', sans-serif" });
+      else tt.bodyFont = { weight: 'normal', size: 13, family: "'Inter', sans-serif" };
       tt.padding = 14;
       tt.cornerRadius = 10;
       tt.displayColors = true;
@@ -73,7 +75,7 @@ const ENDORSE_CATEGORIES = {
     }
   } catch (e) { console.warn('Tooltip defaults update failed:', e); }
 
-  // 图例优化 - 仅修改字段，不替换整个对象
+  // 图例优化 - 仅修改字段
   try {
     if (Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.legend) {
       const legend = Chart.defaults.plugins.legend;
@@ -83,7 +85,8 @@ const ENDORSE_CATEGORIES = {
       legend.labels.usePointStyle = true;
       legend.labels.pointStyle = 'circle';
       legend.labels.padding = 20;
-      legend.labels.font = { size: 13, weight: 'normal', family: "'Inter', sans-serif" };
+      if (legend.labels.font) Object.assign(legend.labels.font, { size: 13, weight: 'normal', family: "'Inter', sans-serif" });
+      else legend.labels.font = { size: 13, weight: 'normal', family: "'Inter', sans-serif" };
       legend.labels.color = '#475569';
     }
   } catch (e) { console.warn('Legend defaults update failed:', e); }
