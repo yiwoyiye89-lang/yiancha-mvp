@@ -1507,6 +1507,7 @@ const App = {
           <div class="detail-tab-item active" onclick="App.switchTab('risk')">风险画像</div>
           <div class="detail-tab-item" onclick="App.switchTab('commercial')">商业价值</div>
           <div class="detail-tab-item" onclick="App.switchTab('fans')">粉丝数据</div>
+          <div class="detail-tab-item" onclick="App.switchTab('endorse')">品牌代言</div>
           <div class="detail-tab-item" onclick="App.switchTab('insight')">深度洞察</div>
           <div class="detail-tab-item" onclick="App.switchTab('events')">风险事件</div>
         </div>
@@ -1747,6 +1748,11 @@ const App = {
         <!-- Events Tab -->
         <div class="tab-content" id="tab-events">
           <div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载风险事件...</span></div>
+        </div>
+
+        <!-- Endorse Tab -->
+        <div class="tab-content" id="tab-endorse">
+          <div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载品牌代言...</span></div>
         </div>`;
 
       // Store artist for lazy loading (commercial score / radar)
@@ -1770,6 +1776,9 @@ const App = {
 
       // Pre-load events
       this.loadEvents(id);
+
+      // Pre-load brand endorsements
+      this.loadEndorsements(id);
 
     } catch (err) {
       document.querySelector('.page-content').innerHTML = `
@@ -3366,6 +3375,82 @@ const App = {
     } catch (err) {
       this.showToast(`报告预览失败：${err.message}`, 'error');
     }
+  },
+
+  // ---- Brand Endorsements (2015-2026) ----
+  async loadEndorsements(artistId) {
+    const panel = document.getElementById('tab-endorse');
+    if (!panel) return;
+    try {
+      const list = await this.api(`/artists/${artistId}/endorsements`);
+      if (!list || !list.length) {
+        panel.innerHTML = `
+          <div class="text-center" style="padding:60px;">
+            <div style="font-size:48px;margin-bottom:16px;">🤝</div>
+            <p style="font-size:15px;color:var(--text-secondary);margin-bottom:8px;">暂无品牌代言数据</p>
+            <p class="text-sm text-tertiary">该艺人暂未收录 2015–2026 年代言信息</p>
+          </div>`;
+        return;
+      }
+      panel.innerHTML = this.renderEndorsements(list);
+    } catch (err) {
+      panel.innerHTML = `<p class="text-sm text-tertiary" style="padding:20px;">品牌代言加载失败：${this.escHtml(err.message)}</p>`;
+    }
+  },
+
+  renderEndorsements(list) {
+    const years = [...new Set(list.map(e => e.year))].sort((a, b) => b - a);
+    const total = list.length;
+    const yrRange = years.length ? `${years[years.length - 1]}–${years[0]}` : '—';
+    const catCount = {};
+    list.forEach(e => { if (e.category) catCount[e.category] = (catCount[e.category] || 0) + 1; });
+    const topCats = Object.entries(catCount).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([c, n]) => `${this.escHtml(c)} <span style="color:var(--text-tertiary);">${n}</span>`).join(' &nbsp;·&nbsp; ');
+    let html = `
+      <div class="card mb-6">
+        <div class="card-header">品牌代言概览 <span class="text-xs text-tertiary">· 2015–2026 年度报告</span></div>
+        <div class="card-body">
+          <div class="grid-3" style="gap:16px;">
+            <div class="stat-card"><div class="stat-number" style="color:var(--primary);">${total}</div><div class="stat-label">代言记录总数</div></div>
+            <div class="stat-card"><div class="stat-number" style="color:var(--primary);">${years.length}</div><div class="stat-label">覆盖年份</div></div>
+            <div class="stat-card"><div class="stat-number" style="color:var(--primary);">${yrRange}</div><div class="stat-label">年份跨度</div></div>
+          </div>
+          ${topCats ? `<div class="text-sm text-tertiary mt-4">热门品类：${topCats}</div>` : ''}
+        </div>
+      </div>`;
+    for (const y of years) {
+      const items = list.filter(e => e.year === y);
+      const rows = items.map(e => {
+        const brand = this.escHtml(e.brand || '—');
+        const product = e.brand_product ? ` <span style="color:var(--text-tertiary);font-size:12px;">· ${this.escHtml(e.brand_product)}</span>` : '';
+        const titleTag = e.title
+          ? `<span class="tag" style="background:linear-gradient(135deg,#EEF2FF,#E0E7FF);color:#3730A3;font-size:12px;padding:2px 8px;">${this.escHtml(e.title)}</span>`
+          : '<span class="text-tertiary" style="font-size:13px;">—</span>';
+        const catTag = e.category
+          ? `<span class="tag" style="background:#F1F5F9;color:#475569;font-size:12px;padding:2px 8px;">${this.escHtml(e.category)}</span>`
+          : '<span class="text-tertiary" style="font-size:13px;">—</span>';
+        const d = e.announce_date || '—';
+        return `<tr>
+          <td style="font-weight:600;color:var(--text-primary);">${brand}${product}</td>
+          <td>${titleTag}</td>
+          <td>${catTag}</td>
+          <td style="color:var(--text-secondary);white-space:nowrap;">${this.escHtml(String(d))}</td>
+        </tr>`;
+      }).join('');
+      html += `
+        <div class="card mt-6">
+          <div class="card-header">${y} 年 <span class="text-xs text-tertiary">· ${items.length} 项</span></div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead><tr><th style="width:38%;">品牌 / 产品</th><th style="width:26%;">头衔</th><th style="width:22%;">品类</th><th style="width:14%;">官宣日期</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+    }
+    return html;
   },
 
   // ---- Risk Events Timeline ----
