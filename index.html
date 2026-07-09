@@ -781,6 +781,51 @@ body {
   animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.modal-lg { max-width: 640px; }
+
+.form-row { display: flex; gap: var(--space-4); }
+.form-row .form-group { flex: 1; }
+
+.lead-item { 
+  border: 1px solid var(--border-light); 
+  border-radius: var(--radius-md); 
+  padding: var(--space-4); 
+  margin-bottom: var(--space-3); 
+}
+.lead-item .lead-head { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  margin-bottom: 6px; 
+}
+.lead-item .lead-name { font-weight: 700; color: var(--text-primary); }
+.lead-item .lead-meta { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
+.lead-item .lead-contact { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+.lead-item .lead-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.tag-status-pending { background: #fff4e5; color: #b76e00; }
+.tag-status-contacted { background: #e6f0ff; color: #2b6cb0; }
+.tag-status-converted { background: #e6f7ed; color: #1a7f4b; }
+.tag-status-rejected { background: #fde8e8; color: #c0392b; }
+
+/* 管理后台 Tabs + 数据质检 */
+.admin-tabs { display: flex; gap: 8px; margin-bottom: 6px; border-bottom: 1px solid var(--border-light); }
+.admin-tab { background: none; border: none; padding: 8px 14px; font-size: 14px; color: var(--text-tertiary); cursor: pointer; border-bottom: 2px solid transparent; }
+.admin-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.dq-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+.dq-card { background: var(--bg-soft); border-radius: var(--radius-md); padding: 12px; text-align: center; }
+.dq-card .num { font-size: 22px; font-weight: 800; color: var(--text-primary); }
+.dq-card .lbl { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
+.dq-fill .fill-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+.dq-fill .fill-name { width: 92px; color: var(--text-secondary); flex-shrink: 0; }
+.dq-fill .fill-bar { flex: 1; height: 8px; background: var(--border-light); border-radius: 4px; overflow: hidden; }
+.dq-fill .fill-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); }
+.dq-fill .fill-pct { width: 44px; text-align: right; color: var(--text-tertiary); flex-shrink: 0; }
+.empty-item { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 10px; margin-bottom: 8px; }
+.empty-item .ei-head { display: flex; justify-content: space-between; align-items: center; }
+.empty-item .ei-name { font-weight: 700; }
+.empty-item .ei-meta { font-size: 12px; color: var(--text-tertiary); margin: 4px 0; }
+.empty-item .ei-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+
 @keyframes slideUp {
   from { 
     opacity: 0; 
@@ -920,6 +965,26 @@ body {
   color: var(--primary); 
   background: var(--primary-50); 
 }
+
+/* ===== #10 内测转化：升级套餐卡片 + 我的邀请码 ===== */
+.upgrade-plan-list { display: flex; flex-direction: column; gap: var(--space-3); margin: var(--space-4) 0; }
+.plan-card { border: 1.5px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-4); background: var(--gray-50); }
+.plan-card.plan-highlight { border-color: var(--primary); background: var(--primary-50); }
+.plan-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-2); }
+.plan-name { font-weight: 700; font-size: 15px; color: var(--text-primary); }
+.plan-price { font-weight: 700; color: var(--primary); font-size: 15px; }
+.plan-price small { font-size: 11px; color: var(--text-tertiary); font-weight: 500; }
+.plan-features { list-style: none; padding: 0; margin: 0; }
+.plan-features li { font-size: 13px; color: var(--text-secondary); padding: 3px 0 3px 18px; position: relative; }
+.plan-features li::before { content: "✓"; position: absolute; left: 0; color: var(--success); font-weight: 700; }
+
+.my-invite { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+.my-invite-label { color: var(--text-tertiary); }
+.my-invite-code { font-family: monospace; font-weight: 700; color: var(--primary); background: var(--primary-50); padding: 2px 8px; border-radius: 6px; letter-spacing: 1px; }
+.my-invite-used { color: var(--text-tertiary); }
+.invite-src { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
+.invite-src b { color: var(--text-secondary); }
+.btn-xs { padding: 4px 10px; font-size: 12px; }
 
 /* === Hero Section - 科技感渐变 === */
 .hero-section { 
@@ -1564,16 +1629,22 @@ body {
     <input type="text" id="navSearch" placeholder="搜索艺人、经纪公司、代表作..." onkeydown="if(event.key==='Enter'){App.navigate('home');document.getElementById('heroSearch').value=this.value;App.doSearch();}">
   </div>
   <div class="nav-right">
-    <button class="btn btn-ghost btn-sm" onclick="App.showToast('报告功能即将上线，敬请期待！', 'info')" style="margin-right:12px;">
-      <span style="font-size:16px;">📄</span> 下载报告
+    <button class="btn btn-ghost btn-sm" onclick="App.navigate('monitoring')" style="margin-right:12px;">
+      <span style="font-size:16px;">🔔</span> 监控告警
+    </button>
+    <button class="btn btn-ghost btn-sm" onclick="App.openBusinessModal()" style="margin-right:12px;">
+      <span style="font-size:16px;">💼</span> 商务合作
+    </button>
+    <button class="btn btn-ghost btn-sm" onclick="App.openAdminLogin()" style="margin-right:12px;">
+      <span style="font-size:16px;">⚙</span> 管理
     </button>
     <div id="userArea"></div>
   </div>
 </nav>
 
 <!-- Auth Modal -->
-<div class="modal-overlay" id="authModal">
-  <div class="modal">
+<div class="modal-overlay" id="authModal" onclick="App.closeAuth()">
+  <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-header">
       <h3 id="authTitle">登录 / 注册</h3>
       <button class="modal-close" onclick="App.closeAuth()">×</button>
@@ -1631,15 +1702,125 @@ body {
       <button class="modal-close" onclick="document.getElementById('upgradeModal').classList.remove('show')">×</button>
     </div>
     <div class="modal-body">
-      <p class="text-sm text-secondary">免费用户每日仅可查看 <strong>5</strong> 位艺人详情。</p>
-      <div class="upgrade-features">
-        <div class="upgrade-feature"><div class="upgrade-check">✓</div>每日查看 50 位艺人详情</div>
-        <div class="upgrade-feature"><div class="upgrade-check">✓</div>生成 PDF 风险报告</div>
-        <div class="upgrade-feature"><div class="upgrade-check">✓</div>实时舆情监测</div>
-        <div class="upgrade-feature"><div class="upgrade-check">✓</div>API 数据接口</div>
-        <div class="upgrade-feature"><div class="upgrade-check">✓</div>专属客服支持</div>
+      <p class="text-sm text-secondary">免费用户每日仅可查看 <strong>5</strong> 位艺人详情，升级专业版可<strong>无限查看</strong>并解锁全部深度分析。</p>
+      <div id="upgradePlanList" class="upgrade-plan-list"><!-- 由 /auth/plans 动态渲染 --></div>
+      <button class="btn btn-primary btn-block btn-lg" type="button" onclick="App.loadPlans()">查看完整套餐与权益</button>
+      <div style="margin-top:12px; text-align:center;">
+        <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('upgradeModal').classList.remove('show'); App.openBusinessModal();">📝 申请开通专业版 / 商务合作</button>
       </div>
-      <button class="btn btn-primary btn-block btn-lg" onclick="App.showToast('敬请期待，专业版即将上线！', 'info');document.getElementById('upgradeModal').classList.remove('show')">了解套餐详情</button>
+    </div>
+  </div>
+</div>
+
+<!-- Business Application Modal -->
+<div class="modal-overlay" id="businessModal" onclick="App.closeBusinessModal()">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>商务合作 / 申请开通</h3>
+      <button class="modal-close" onclick="App.closeBusinessModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-secondary">填写下方信息，我们将为您的品牌/机构开通专业版或企业版，并提供专属风险评估与监测服务。</p>
+      <form id="businessForm" onsubmit="App.submitBusiness(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>联系人姓名 <span style="color:var(--danger);">*</span></label>
+            <input class="form-input" type="text" id="bizName" placeholder="您的称呼" required>
+          </div>
+          <div class="form-group">
+            <label>公司 / 机构</label>
+            <input class="form-input" type="text" id="bizCompany" placeholder="如：某某品牌市场部">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>身份角色</label>
+            <select class="form-input" id="bizRole">
+              <option value="brand">品牌方</option>
+              <option value="mcn">MCN / 经纪</option>
+              <option value="agency">广告代理</option>
+              <option value="production">影视制作</option>
+              <option value="government">政府 / 媒体</option>
+              <option value="individual">个人</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>联系电话 <span style="color:var(--danger);">*</span></label>
+            <input class="form-input" type="tel" id="bizPhone" placeholder="以便我们回拨" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>邮箱</label>
+            <input class="form-input" type="email" id="bizEmail" placeholder="name@company.com">
+          </div>
+          <div class="form-group">
+            <label>微信</label>
+            <input class="form-input" type="text" id="bizWechat" placeholder="选填">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>意向套餐</label>
+          <div style="display:flex; gap:16px; margin-top:6px;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="bizPlan" value="professional" checked> 专业版（¥299/月）
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="bizPlan" value="enterprise"> 企业版（¥2999/月）
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>使用场景</label>
+          <input class="form-input" type="text" id="bizUseCase" placeholder="如：代言人风险评估、竞品监测">
+        </div>
+        <div class="form-group">
+          <label>留言</label>
+          <textarea class="form-input" id="bizMessage" rows="3" placeholder="补充说明（选填）"></textarea>
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit">提交申请</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Admin Modal (login + leads) -->
+<div class="modal-overlay" id="adminModal" onclick="App.closeAdminModal()">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>管理后台</h3>
+      <button class="modal-close" onclick="App.closeAdminModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="adminLoginBox">
+        <p class="text-sm text-secondary">请输入管理引导密钥以进入后台（商务线索 + 数据质检）。</p>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;">
+            <input class="form-input" type="password" id="adminCode" placeholder="管理引导密钥">
+          </div>
+          <button class="btn btn-primary" type="button" onclick="App.submitAdminLogin()">进入</button>
+        </div>
+        <div id="adminLoginMsg" style="font-size:13px; margin-top:6px;"></div>
+      </div>
+      <div id="adminLeadsBox" style="display:none;">
+        <div class="admin-tabs">
+          <button class="admin-tab active" id="tabLeads" onclick="App.switchAdminTab('leads')">💼 商务线索</button>
+          <button class="admin-tab" id="tabDQ" onclick="App.switchAdminTab('dq')">📊 数据质检</button>
+        </div>
+        <div id="adminLeadsPanel">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin:10px 0;">
+            <span class="text-secondary text-sm" id="adminLeadsMeta"></span>
+            <button class="btn btn-ghost btn-xs" type="button" onclick="App.renderAdminLeads()">刷新</button>
+          </div>
+          <div id="adminLeadsList" style="max-height:52vh; overflow:auto;"></div>
+        </div>
+        <div id="adminDQPanel" style="display:none;">
+          <div id="adminDQSummary" class="dq-summary"></div>
+          <div id="adminDQFill" class="dq-fill"></div>
+          <div id="adminDQEmptyMeta" class="text-secondary text-sm" style="margin:12px 0 6px;"></div>
+          <div id="adminDQEmptyList" style="max-height:46vh; overflow:auto;"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

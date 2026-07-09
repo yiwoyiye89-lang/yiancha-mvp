@@ -1,0 +1,19 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-XSS-Protection: 1; mode=block
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' fonts.googleapis.com cdn.jsdelivr.net; font-src 'self' fonts.gstatic.com fonts.googleapis.com; img-src 'self' data: https:; connect-src 'self' https://yiancha-backend.onrender.com; worker-src 'self' blob:; frame-src 'self' blob:
+
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/app.js
+  Cache-Control: public, max-age=300
+
+/*.json
+  Cache-Control: public, max-age=3600
+
+/design/*
+  Cache-Control: public, max-age=86400

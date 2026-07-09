@@ -33,6 +33,7 @@ DEPLOY_FILES = [
     "design/ui-prototype.html",
     "README.md",
     "netlify.toml",
+    "_headers",
 ]
 
 MAX_RETRY = 3

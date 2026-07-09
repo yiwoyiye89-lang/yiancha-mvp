@@ -116,6 +116,10 @@ const App = {
     compareDefaultNames: '',
     offlineMode: false,
     offlineArtists: [],
+    quota: null, // 服务端配额快照 { limit, remaining }，详情接口通过 X-Quota-* 头回填
+    riskWeights: { political: 0.4, legal: 0.3, moral: 0.2, commercial: 0.1 }, // 风险模型四维权重（由 /risk/weights 动态覆盖）
+    myInvite: null, // 登录用户的专属邀请码快照（由 /auth/my-invite 获取）
+    commercialScores: {}, // 艺人商业价值评分缓存 { artistId: scoreData }，商业 tab 懒加载
   },
 
   // ---- Init ----
@@ -125,7 +129,22 @@ const App = {
     const fileInput = document.getElementById('offlineFileInput');
     if (fileInput) fileInput.addEventListener('change', (e) => this.handleOfflineFile(e));
     this.restoreUser();
+    this.loadRiskWeights();
     this.route();
+  },
+
+  // 拉取风险模型权重配置（驱动详情页「权重X%」动态展示，与后端一致）
+  loadRiskWeights() {
+    this.api('/risk/weights').then((d) => {
+      if (d && d.weights) this.state.riskWeights = d.weights;
+    }).catch(() => { /* 失败则用默认权重，不影响功能 */ });
+  },
+
+  // 维度权重百分比文案
+  weightLabel(dim) {
+    const w = this.state.riskWeights[dim];
+    if (typeof w !== 'number') return '';
+    return `权重${Math.round(w * 100)}%`;
   },
 
   // ---- Navigation ----
@@ -143,6 +162,8 @@ const App = {
     if (hash.startsWith('artist/')) {
       const id = hash.replace('artist/', '');
       this.renderDetailPage(container, id);
+    } else if (hash === 'monitoring') {
+      this.renderMonitoringPage(container);
     } else {
       this.renderHomePage(container);
     }
@@ -152,26 +173,67 @@ const App = {
   // ---- API ----
   async api(path, options = {}) {
     const url = path.startsWith('http') ? path : `${this.API_BASE}${path}`;
-    const headers = { 'Content-Type': 'application/json' };
-    if (this.state.token) {
-      headers['Authorization'] = `Bearer ${this.state.token}`;
-    }
-    // 15s 超时：避免 Render 免费版冷启动(30-60s)时 UI 长时间干等
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    try {
-      const resp = await fetch(url, { ...options, headers, signal: controller.signal });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(err.detail || `HTTP ${resp.status}`);
+    const isAuth = path.startsWith('/auth/'); // 登录/注册类接口不做 401 拦截，避免死循环
+
+    const doFetch = async (retried) => {
+      const headers = { 'Content-Type': 'application/json' };
+      if (this.state.token) {
+        headers['Authorization'] = `Bearer ${this.state.token}`;
       }
-      return await resp.json();
-    } catch (e) {
-      console.error('API Error:', e);
-      throw e;
-    } finally {
-      clearTimeout(timeoutId);
-    }
+      // 15s 超时：避免 Render 免费版冷启动(30-60s)时 UI 长时间干等
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      try {
+        const resp = await fetch(url, { ...options, headers, signal: controller.signal });
+
+        // 回填配额头（详情接口返回 X-Quota-Limit / X-Quota-Remaining）
+        const qLimit = resp.headers.get('X-Quota-Limit');
+        const qRemain = resp.headers.get('X-Quota-Remaining');
+        if (qLimit !== null && qRemain !== null) {
+          this.state.quota = { limit: parseInt(qLimit, 10), remaining: parseInt(qRemain, 10) };
+        }
+
+        // 401 未登录：弹出登录框，登录成功后自动重放原请求（仅重试一次，防死循环）
+        if (resp.status === 401 && !isAuth && !retried) {
+          const ok = await this.promptLogin();
+          if (ok) return doFetch(true);
+          const body = await resp.json().catch(() => ({ detail: '请先登录后查看' }));
+          const err = new Error(body.detail || '请先登录后查看');
+          err.status = 401;
+          throw err;
+        }
+
+        // 402 免费用户配额超限：提示并弹出升级框
+        if (resp.status === 402) {
+          const body = await resp.json().catch(() => ({ detail: '今日免费查看次数已用完，升级专业版可无限查看' }));
+          const msg = body.detail || '今日免费查看次数已用完，升级专业版可无限查看';
+          this.showQuotaExceeded(msg);
+          const err = new Error(msg);
+          err.status = 402;
+          throw err;
+        }
+
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+          const err = new Error(body.detail || `HTTP ${resp.status}`);
+          err.status = resp.status;
+          throw err;
+        }
+        return resp.json();
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          const err = new Error('请求超时，请稍后重试');
+          err.status = 0;
+          throw err;
+        }
+        console.error('API Error:', e);
+        throw e;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
+    return doFetch(false);
   },
 
   // ---- Toast ----
@@ -460,24 +522,106 @@ const App = {
     }
   },
 
-  renderUserArea() {
+  async renderUserArea() {
     const area = document.getElementById('userArea');
-    if (this.state.user) {
-      const phone = this.state.user.phone || this.state.user.username || '用户';
+    if (!area) return;
+    if (this.state.user && this.state.token) {
+      const phone = this.state.user.phone || '用户';
       const masked = phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+      const planName = this.state.user.plan_name || '免费版';
+
+      // 注册来源（内测转化归因展示）
+      const srcHtml = this.state.user.invited_by
+        ? `<div class="invite-src">通过邀请码 <b>${this.state.user.invited_by}</b> 注册</div>`
+        : '';
+
+      // 我的邀请码（促内测裂变）：拉取专属码并缓存
+      let inviteHtml = '';
+      try {
+        if (!this.state.myInvite) this.state.myInvite = await this.api('/auth/my-invite');
+        const mi = this.state.myInvite;
+        inviteHtml = `
+          <div class="my-invite">
+            <span class="my-invite-label">我的邀请码</span>
+            <code class="my-invite-code">${mi.code}</code>
+            <button class="btn btn-ghost btn-xs" type="button" onclick="App.copyText('${mi.code}')">复制</button>
+            <span class="my-invite-used">已邀请 ${mi.used_count}/${mi.max_uses} 人</span>
+          </div>`;
+      } catch (e) {
+        inviteHtml = '';
+      }
+
       area.innerHTML = `
-        <div class="user-area" onclick="App.closeAuth()" title="已登录">
+        <div class="user-area" title="已登录">
           <span>${masked}</span>
-          <span class="plan-tag">${this.state.user.plan_name || '免费版'}</span>
-          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();App.logout()">退出</button>
-        </div>`;
+          <span class="plan-tag">${planName}</span>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="App.logout()">退出</button>
+        </div>
+        ${srcHtml}
+        ${inviteHtml}`;
     } else {
-      area.innerHTML = `<button class="btn btn-primary btn-sm" onclick="App.openAuth()">登录</button>`;
+      this.state.myInvite = null;
+      area.innerHTML = `<button class="btn btn-primary btn-sm" type="button" onclick="App.openAuth()">登录</button>`;
     }
   },
 
   openAuth() { document.getElementById('authModal').classList.add('show'); },
-  closeAuth() { document.getElementById('authModal').classList.remove('show'); },
+  // 关闭登录框：若是由 401 拦截自动弹出的，用户主动关闭视为「取消登录」
+  closeAuth() {
+    document.getElementById('authModal').classList.remove('show');
+    if (this._loginResolve) {
+      const resolveLogin = this._loginResolve;
+      this._loginResolve = null;
+      resolveLogin(false);
+    }
+  },
+  // 401 拦截时调用：返回 Promise，登录成功 resolve(true)，用户关闭/取消 resolve(false)
+  promptLogin() {
+    return new Promise((resolve) => {
+      this._loginResolve = resolve;
+      this.openAuth();
+    });
+  },
+
+  // 配额超限提示：Toast 告知 + 弹出升级会员框
+  showQuotaExceeded(msg) {
+    this.showToast(msg, 'error');
+    this.loadPlans(); // 弹出真实套餐，引导升级
+  },
+
+  async loadPlans() {
+    try {
+      const data = await this.api('/auth/plans');
+      const plans = data.plans || [];
+      const list = document.getElementById('upgradePlanList');
+      if (list) {
+        list.innerHTML = plans.map(p => `
+          <div class="plan-card ${p.id === 'pro' ? 'plan-highlight' : ''}">
+            <div class="plan-head">
+              <span class="plan-name">${p.name}</span>
+              ${p.price ? `<span class="plan-price">¥${p.price}<small>/${p.price_unit || '月'}</small></span>` : '<span class="plan-price">免费</span>'}
+            </div>
+            <ul class="plan-features">
+              ${(p.features || []).map(f => `<li>${f}</li>`).join('')}
+            </ul>
+          </div>`).join('');
+      }
+      const m = document.getElementById('upgradeModal');
+      if (m) m.classList.add('show');
+    } catch (err) {
+      this.showToast(`加载套餐失败：${err.message}`, 'error');
+    }
+  },
+
+  copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => this.showToast('已复制邀请码', 'success'))
+        .catch(() => this.showToast('复制失败，请手动复制', 'error'));
+    } else {
+      this.showToast('当前环境不支持自动复制', 'info');
+    }
+  },
 
   switchAuthTab(tab) {
     document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
@@ -520,7 +664,7 @@ const App = {
     try {
       const data = await this.api('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ phone, password, invite_code: inviateCode })
+        body: JSON.stringify({ phone, password, invite_code: inviteCode })
       });
       this.onLoginSuccess(data);
       this.showToast('注册成功！', 'success');
@@ -575,6 +719,12 @@ const App = {
     this.state.user = data.user || { phone: data.phone || 'demo', plan_name: data.plan_name || '免费版' };
     localStorage.setItem('yc_token', this.state.token);
     localStorage.setItem('yc_user', JSON.stringify(this.state.user));
+    // 若是由 401 拦截触发的登录，唤醒等待中的原请求
+    if (this._loginResolve) {
+      const resolveLogin = this._loginResolve;
+      this._loginResolve = null;
+      resolveLogin(true);
+    }
     this.closeAuth();
     this.renderUserArea();
   },
@@ -590,10 +740,223 @@ const App = {
 
   async verifyToken() {
     try {
-      await this.api('/auth/verify');
+      const data = await this.api('/auth/me');
+      this.state.user = {
+        phone: data.phone || this.state.user?.phone || '用户',
+        plan_name: data.plan_name || '免费版',
+        plan: data.plan,
+        nickname: data.nickname,
+      };
+      localStorage.setItem('yc_user', JSON.stringify(this.state.user));
+      this.renderUserArea();
     } catch {
       this.state.token = null;
       localStorage.removeItem('yc_token');
+      localStorage.removeItem('yc_user');
+      this.renderUserArea();
+    }
+  },
+
+  // ---- 商务合作 / 申请开通（P2 内测转化入口）----
+  openBusinessModal() { document.getElementById('businessModal').classList.add('show'); },
+  closeBusinessModal() { document.getElementById('businessModal').classList.remove('show'); },
+
+  async submitBusiness(e) {
+    e.preventDefault();
+    const name = (document.getElementById('bizName').value || '').trim();
+    const phone = (document.getElementById('bizPhone').value || '').trim();
+    if (!name) { this.showToast('请填写联系人姓名', 'warning'); return; }
+    if (!phone) { this.showToast('请至少留下联系电话', 'warning'); return; }
+    const plan = (document.querySelector('input[name="bizPlan"]:checked') || {}).value || 'professional';
+    const payload = {
+      contact_name: name,
+      company: (document.getElementById('bizCompany').value || '').trim() || null,
+      role: document.getElementById('bizRole').value,
+      contact_phone: phone,
+      contact_email: (document.getElementById('bizEmail').value || '').trim() || null,
+      contact_wechat: (document.getElementById('bizWechat').value || '').trim() || null,
+      plan_interest: plan,
+      use_case: (document.getElementById('bizUseCase').value || '').trim() || null,
+      message: (document.getElementById('bizMessage').value || '').trim() || null,
+    };
+    try {
+      const d = await this.api('/business/apply', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      this.showToast(d.message || '申请已提交', 'success');
+      this.closeBusinessModal();
+      document.getElementById('businessForm').reset();
+    } catch (err) {
+      this.showToast(err.message || '提交失败', 'error');
+    }
+  },
+
+  // ---- 管理后台（商务线索）----
+  openAdminLogin() {
+    document.getElementById('adminModal').classList.add('show');
+    document.getElementById('adminLoginBox').style.display = '';
+    document.getElementById('adminLeadsBox').style.display = 'none';
+    document.getElementById('adminLoginMsg').innerHTML = '';
+    document.getElementById('adminCode').value = '';
+  },
+  closeAdminModal() { document.getElementById('adminModal').classList.remove('show'); },
+
+  async submitAdminLogin() {
+    const code = (document.getElementById('adminCode').value || '').trim();
+    if (!code) { document.getElementById('adminLoginMsg').innerHTML = '<span style="color:var(--danger);">请输入引导密钥</span>'; return; }
+    try {
+      const d = await this.api('/auth/admin-token', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+      localStorage.setItem('yc_admin_token', d.token || d.access_token);
+      document.getElementById('adminLoginBox').style.display = 'none';
+      document.getElementById('adminLeadsBox').style.display = '';
+      this.showToast('已进入管理后台', 'success');
+      await this.renderAdminLeads();
+      await this.renderAdminDQ();
+    } catch (err) {
+      document.getElementById('adminLoginMsg').innerHTML = `<span style="color:var(--danger);">${err.message || '密钥错误'}</span>`;
+    }
+  },
+
+  async adminApi(path, options = {}) {
+    const token = localStorage.getItem('yc_admin_token');
+    const url = `${this.API_BASE}${path}`;
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    try {
+      const resp = await fetch(url, { ...options, headers, signal: controller.signal });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+        const err = new Error(body.detail || `HTTP ${resp.status}`);
+        err.status = resp.status;
+        throw err;
+      }
+      return resp.json();
+    } catch (e) {
+      if (e.name === 'AbortError') { const err = new Error('请求超时'); err.status = 0; throw err; }
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  },
+
+  async renderAdminLeads() {
+    const box = document.getElementById('adminLeadsList');
+    const meta = document.getElementById('adminLeadsMeta');
+    if (!box) return;
+    try {
+      const d = await this.adminApi('/business/leads?limit=100');
+      const leads = d.leads || [];
+      meta.textContent = `共 ${d.total} 条线索`;
+      if (!leads.length) {
+        box.innerHTML = '<div class="text-secondary text-sm" style="padding:12px;">暂无商务线索。</div>';
+        return;
+      }
+      const statusCN = { pending: '待联系', contacted: '已联系', converted: '已转化', rejected: '已拒绝' };
+      box.innerHTML = leads.map(l => `
+        <div class="lead-item">
+          <div class="lead-head">
+            <span class="lead-name">${l.contact_name}${l.company ? '（' + l.company + '）' : ''}</span>
+            <span class="tag tag-status-${l.status}">${statusCN[l.status] || l.status}</span>
+          </div>
+          <div class="lead-meta">提交时间：${l.created_at ? l.created_at.replace('T', ' ').slice(0, 19) : '-'} ｜ 意向：${l.plan_interest === 'enterprise' ? '企业版' : '专业版'}${l.role ? ' ｜ 角色：' + l.role : ''}</div>
+          <div class="lead-contact">📞 ${l.contact_phone || '-'} ｜ ✉️ ${l.contact_email || '-'} ｜ 💬 ${l.contact_wechat || '-'}</div>
+          ${l.use_case ? `<div class="lead-contact">使用场景：${l.use_case}</div>` : ''}
+          ${l.message ? `<div class="lead-contact">留言：${l.message}</div>` : ''}
+          ${l.user_id ? `<div class="lead-meta">关联用户ID：${l.user_id}</div>` : '<div class="lead-meta">匿名申请（无关联账号）</div>'}
+          <div class="lead-actions">
+            <button class="btn btn-ghost btn-xs" onclick="App.adminUpdateLead(${l.id},'contacted')">标记已联系</button>
+            <button class="btn btn-primary btn-xs" onclick="App.adminUpdateLead(${l.id},'converted')">转化开通</button>
+            <button class="btn btn-ghost btn-xs" onclick="App.adminUpdateLead(${l.id},'rejected')">拒绝</button>
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      box.innerHTML = `<div class="text-danger text-sm">加载失败：${err.message}</div>`;
+    }
+  },
+
+  async adminUpdateLead(id, status) {
+    if (!confirm(`确认将线索 #${id} 状态改为「${status}」？`)) return;
+    try {
+      const d = await this.adminApi(`/business/leads/${id}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status }),
+      });
+      this.showToast(d.message || '已更新', 'success');
+      await this.renderAdminLeads();
+    } catch (err) {
+      this.showToast(err.message || '更新失败', 'error');
+    }
+  },
+
+  switchAdminTab(tab) {
+    document.getElementById('tabLeads').classList.toggle('active', tab === 'leads');
+    document.getElementById('tabDQ').classList.toggle('active', tab === 'dq');
+    document.getElementById('adminLeadsPanel').style.display = tab === 'leads' ? '' : 'none';
+    document.getElementById('adminDQPanel').style.display = tab === 'dq' ? '' : 'none';
+    if (tab === 'dq') this.renderAdminDQ();
+  },
+
+  async renderAdminDQ() {
+    const summary = document.getElementById('adminDQSummary');
+    const fill = document.getElementById('adminDQFill');
+    const meta = document.getElementById('adminDQEmptyMeta');
+    const list = document.getElementById('adminDQEmptyList');
+    if (!summary) return;
+    try {
+      const c = await this.adminApi('/coverage');
+      const cov = c.coverage_pct;
+      const covColor = cov >= 30 ? 'var(--success)' : cov >= 15 ? 'var(--warning)' : 'var(--danger)';
+      summary.innerHTML = `
+        <div class="dq-card"><div class="num">${c.total}</div><div class="lbl">艺人总数</div></div>
+        <div class="dq-card"><div class="num" style="color:${covColor}">${cov}%</div><div class="lbl">已评估覆盖率</div></div>
+        <div class="dq-card"><div class="num" style="color:var(--danger)">${c.empty_count}</div><div class="lbl">空艺人(无评分/事件)</div></div>
+        <div class="dq-card"><div class="num">${c.overall_quality_pct}</div><div class="lbl">平均完整度</div></div>`;
+      // 字段填充率（仅显示对风险评估有意义的字段）
+      const showFields = [
+        ['agency', '经纪公司'], ['persona_tags', '人设标签'], ['brand_history', '品牌史'],
+        ['commercial_quote', '商务报价'], ['deep_insight', '深度洞察'], ['risk_summary', '风险摘要'],
+        ['weibo_fans', '微博粉丝'], ['risk_score', '风险评分'],
+      ];
+      fill.innerHTML = showFields.map(([k, label]) => {
+        const f = c.field_fill[k] || { pct: 0 };
+        return `<div class="fill-row"><div class="fill-name">${label}</div><div class="fill-bar"><span style="width:${f.pct}%"></span></div><div class="fill-pct">${f.pct}%</div></div>`;
+      }).join('');
+      // 空艺人列表（首批）
+      const e = await this.adminApi('/coverage/empty?limit=30&offset=0');
+      meta.innerHTML = `空艺人共 <strong>${e.total}</strong> 位（按 已申请&gt;热度&gt;完整度 排序，每周自动补全 S/A 级）。点击「补全」加入队列。`;
+      if (!e.items.length) {
+        list.innerHTML = '<div class="text-secondary text-sm" style="padding:8px;">暂无空艺人 🎉</div>';
+        return;
+      }
+      list.innerHTML = e.items.map(it => `
+        <div class="empty-item">
+          <div class="ei-head">
+            <span class="ei-name">${it.name} <span class="text-tertiary text-sm">${it.heat_level || ''}</span></span>
+            <span class="tag tag-status-${it.quality_score > 70 ? 'converted' : it.quality_score > 40 ? 'contacted' : 'pending'}">完整度 ${it.quality_score}</span>
+          </div>
+          <div class="ei-meta">经纪公司：${it.agency || '—'} ｜ 代表作：${(it.masterpieces || '').slice(0, 20) || '—'}${it.enrich_requested ? ' ｜ <span style="color:var(--success)">已加入补全队列</span>' : ''}</div>
+          <div class="ei-actions">
+            <button class="btn btn-ghost btn-xs" onclick="App.adminRequestEnrich(${it.id})">${it.enrich_requested ? '已在队列' : '补全'}</button>
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      summary.innerHTML = `<div class="text-danger text-sm">加载质检数据失败：${err.message}</div>`;
+    }
+  },
+
+  async adminRequestEnrich(id) {
+    try {
+      const d = await this.adminApi(`/coverage/artists/${id}/enrich-request`, { method: 'POST' });
+      this.showToast(d.message || '已加入补全队列', 'success');
+      await this.renderAdminDQ();
+    } catch (err) {
+      this.showToast(err.message || '操作失败', 'error');
     }
   },
 
@@ -634,6 +997,26 @@ const App = {
     if (l === 'A') return 'tag-heat-a';
     if (l === 'B') return 'tag-heat-b';
     return 'tag-heat-c';
+  },
+
+  // ---- P4 风险评分可解释性辅助 ----
+  escHtml(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+
+  getRiskDimColor(level) {
+    // 维度等级：极低/低/中/较高/高
+    if (!level) return '#34D399';
+    if (level === '极低') return '#10B981';
+    if (level === '低') return '#34D399';
+    if (level === '中') return '#F59E0B';
+    if (level === '较高') return '#F97316';
+    return '#EF4444';
+  },
+
+  getSevColor(sev) {
+    return ({ critical: '#DC2626', high: '#EF4444', medium: '#F59E0B', low: '#10B981' })[sev] || '#6B7280';
   },
 
   getHeatAvatarGradient(name) {
@@ -1045,8 +1428,9 @@ const App = {
       return;
     }
 
-    // Check view limit
-    if (!this.canViewDetail()) {
+    // Check view limit：仅当已拿到服务端配额且确已用完时提前提示；
+    // 否则交由后端裁决（匿名→401 弹登录框，免费超限→402 弹升级框）
+    if (this.state.quota && this.state.quota.remaining <= 0) {
       document.getElementById('upgradeModal').classList.add('show');
     }
 
@@ -1079,9 +1463,12 @@ const App = {
         this.recordView();
       }
 
-      // Determine remaining views for free users
-      const remaining = this.state.user?.plan_name === '免费版' || !this.state.user?.plan_name
-        ? Math.max(0, 5 - this.state.dailyViews) : null;
+      // Determine remaining views for free users（优先用服务端配额，无则用本地计数兜底）
+      const isFree = !this.state.user || this.state.user.plan_name === '免费版';
+      const remaining = !isFree ? null
+        : (this.state.quota && this.state.quota.remaining >= 0
+            ? this.state.quota.remaining
+            : Math.max(0, 5 - this.state.dailyViews));
 
       // Render header
       const score = a.risk_score;
@@ -1138,18 +1525,30 @@ const App = {
               <div class="card-header">评分明细</div>
               <div class="card-body">
                 <div style="display:flex;flex-direction:column;gap:20px;">
-                  ${this.renderScoreBar('政治风险', '权重40%', a.risk_political)}
-                  ${this.renderScoreBar('法律风险', '权重30%', a.risk_legal)}
-                  ${this.renderScoreBar('道德风险', '权重20%', a.risk_moral)}
-                  ${this.renderScoreBar('商业风险', '权重10%', a.risk_commercial)}
+                  ${this.renderScoreBar('政治风险', this.weightLabel('political'), a.risk_political)}
+                  ${this.renderScoreBar('法律风险', this.weightLabel('legal'), a.risk_legal)}
+                  ${this.renderScoreBar('道德风险', this.weightLabel('moral'), a.risk_moral)}
+                  ${this.renderScoreBar('商业风险', this.weightLabel('commercial'), a.risk_commercial)}
                 </div>
               </div>
             </div>
           </div>
           ${a.risk_summary ? `<div class="card mt-6"><div class="card-header">风险摘要</div><div class="card-body"><p style="font-size:15px;line-height:1.8;color:var(--text-secondary);">${a.risk_summary}</p></div></div>` : ''}
           <div style="text-align:center;margin-top:24px;">
-            <button class="btn btn-primary" onclick="App.downloadRiskReport(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📥 下载报告（HTML）</button>
-            <button class="btn" style="background:var(--primary-dark);color:#fff;border:none;margin-left:8px;" onclick="App.downloadRiskReportPDF(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📄 下载报告（PDF）</button>
+            <button class="btn" style="background:var(--primary-dark);color:#fff;border:none;margin-left:8px;" onclick="App.previewRiskReport(${a.id})">👁 预览报告</button>
+            <button class="btn btn-primary" onclick="App.downloadRiskReport(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📥 下载综合档案报告</button>
+            <button class="btn" style="background:var(--primary-dark);color:#fff;border:none;margin-left:8px;" onclick="App.downloadRiskReportPDF(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📄 下载PDF</button>
+            <button class="btn" style="background:linear-gradient(135deg,#7C3AED,#DB2777);color:#fff;border:none;margin-left:8px;" onclick="App.openWhitelabelModal(${a.id}, '${a.name.replace(/'/g, "\\'")}')">🎨 白标导出</button>
+            <button class="btn" style="background:linear-gradient(135deg,#059669,#10B981);color:#fff;border:none;margin-left:8px;" onclick="App.openSafetyCard(${a.id})">🛡 安全评分卡</button>
+          </div>
+          <div class="card mt-6" id="explainPanelCard">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <span>风险评分可解释性 <span class="text-xs text-tertiary">· 四维因子级分解</span></span>
+              <select id="explainProfileSel" class="profile-sel" style="font-size:13px;padding:5px 8px;border-radius:8px;border:1px solid var(--border,#E2E8F0);background:var(--bg,#fff);color:var(--text-primary,#0F2A4A);" onchange="App.onExplainProfileChange()" title="按客户行业缩放风险评分模型">
+                <option value="default">通用模型（规范分）</option>
+              </select>
+            </div>
+            <div class="card-body" id="explainPanel"><div class="text-sm text-tertiary">加载评分解释中...</div></div>
           </div>
           <div class="card mt-6">
             <div class="card-header">基本信息</div>
@@ -1176,14 +1575,17 @@ const App = {
           <div class="card mb-6">
             <div class="card-header">商业价值概览</div>
             <div class="card-body">
-              <div class="grid-2">
-                <div style="text-align:center;">
-                  ${a.commercial_quote ? `<div style="font-size:28px;font-weight:700;color:var(--primary);">${a.commercial_quote}</div><div style="font-size:14px;color:var(--text-secondary);margin-top:8px;">商务报价</div>` : `<div style="font-size:14px;color:var(--text-tertiary);">暂无商务报价数据</div>`}
+              <div id="commercialScoreBox">
+                <div class="grid-2">
+                  <div style="text-align:center;">
+                    ${a.commercial_quote ? `<div style="font-size:28px;font-weight:700;color:var(--primary);">${a.commercial_quote}</div><div style="font-size:14px;color:var(--text-secondary);margin-top:8px;">商务报价</div>` : `<div style="font-size:14px;color:var(--text-tertiary);">暂无商务报价数据</div>`}
+                  </div>
+                  <div style="text-align:center;">
+                    <div style="font-size:28px;font-weight:700;color:var(--value-s);">${a.heat_level || '-'}</div>
+                    <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;">热度等级</div>
+                  </div>
                 </div>
-                <div style="text-align:center;">
-                  <div style="font-size:28px;font-weight:700;color:var(--value-s);">${a.heat_level || '-'}</div>
-                  <div style="font-size:14px;color:var(--text-secondary);margin-top:8px;">热度等级</div>
-                </div>
+                <div style="text-align:center;margin-top:10px;font-size:12px;color:var(--text-tertiary);">点击「商业价值」标签查看完整四维评分分析</div>
               </div>
             </div>
           </div>
@@ -1288,14 +1690,18 @@ const App = {
           <div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载风险事件...</span></div>
         </div>`;
 
-      // Store artist ID for lazy loading
+      // Store artist for lazy loading (commercial score / radar)
       this.state.currentArtistId = id;
+      this.state.currentArtist = a;
 
       // Draw radar chart
       this.drawRadarChart(a);
 
-      // Draw commercial radar (on commercial tab, lazy when tab is visible)
-      this.drawCommercialRadar(a);
+      // P4/P5-A：加载风险评分可解释性（四维因子级分解，支持按行业模型配置）
+      this.state.currentArtistId = id;
+      this.loadRiskExplanation(id, 'default');
+
+      // Commercial radar 改为「点击商业价值标签」时懒加载真实数据（避免展示随机假数据）
 
       // Draw fan profile pie charts
       this.drawFanProfileCharts(a);
@@ -1314,6 +1720,107 @@ const App = {
           <button class="btn btn-primary mt-6" onclick="App.navigate('home')">返回首页</button>
         </div>`;
     }
+  },
+
+  // ---- P4/P5-A 风险评分可解释性 ----
+  async loadRiskExplanation(artistId, profile) {
+    const panel = document.getElementById('explainPanel');
+    if (!panel) return;
+    profile = profile || 'default';
+    try {
+      // 拉取可用模型配置（缓存），填充下拉并选中当前项
+      await this.populateExplainProfiles(profile);
+      const d = await this.api(`/risk/explain/${artistId}?profile=${encodeURIComponent(profile)}`);
+      panel.innerHTML = this.renderExplanation(d);
+    } catch (err) {
+      panel.innerHTML = `<p class="text-sm text-tertiary">评分解释暂不可用：${this.escHtml(err.message)}</p>`;
+    }
+  },
+
+  async populateExplainProfiles(current) {
+    try {
+      if (!this.state.modelProfiles) {
+        const r = await this.api('/risk/model/profiles');
+        this.state.modelProfiles = (r && r.profiles) ? r.profiles : [];
+      }
+      const sel = document.getElementById('explainProfileSel');
+      if (!sel) return;
+      const profiles = this.state.modelProfiles;
+      if (sel.options.length <= 1 && profiles.length) {
+        sel.innerHTML = profiles.map(p =>
+          `<option value="${this.escHtml(p.name)}">${this.escHtml(p.label || p.name)}</option>`
+        ).join('');
+      }
+      sel.value = current || 'default';
+    } catch (err) {
+      // 配置列表拉取失败不阻断解释渲染
+    }
+  },
+
+  onExplainProfileChange() {
+    const sel = document.getElementById('explainProfileSel');
+    if (!sel) return;
+    const id = this.state.currentArtistId;
+    if (id) this.loadRiskExplanation(id, sel.value);
+  },
+
+  renderExplanation(d) {
+    const dims = d.dimensions || {};
+    const dimNames = { political: '政治风险', legal: '法律风险', moral: '道德风险', commercial: '商业风险' };
+    const basisColor = d.data_basis === 'real_events' ? 'var(--risk-safe)' : '#F59E0B';
+    const basisLabel = d.data_basis === 'real_events' ? '实时事件计算' : '无事件 · 历史评估';
+    const scoreText = (d.comprehensive_score != null) ? d.comprehensive_score : '—';
+    const weightsLine = (d.weights_overview || []).map(w => `${w.name} ${w.weight_pct}`).join(' · ');
+
+    const order = ['political', 'legal', 'moral', 'commercial'];
+    let dimsHtml = '';
+    for (const code of order) {
+      const dim = dims[code] || {};
+      const score = dim.score != null ? dim.score : 100;
+      const level = dim.level || '低';
+      const color = this.getRiskDimColor(level);
+      const deductions = dim.deductions != null ? dim.deductions : 0;
+      const evs = dim.events || [];
+      let contrib = '';
+      if (evs.length) {
+        contrib = '<div style="margin-top:10px;display:flex;flex-direction:column;gap:0;">' + evs.map(ev => {
+          const sevColor = this.getSevColor(ev.severity);
+          const links = (ev.source_links || []).slice(0, 3).map((l, i) =>
+            `<a href="${this.escHtml(l)}" target="_blank" rel="noopener" style="color:var(--primary);font-size:12px;margin-left:4px;">[${i + 1}]</a>`
+          ).join('');
+          const verified = ev.verified ? '<span style="color:var(--risk-safe);font-size:11px;margin-left:6px;">已核验</span>' : '<span style="color:#F59E0B;font-size:11px;margin-left:6px;">未核验</span>';
+          return `<div style="display:flex;gap:10px;align-items:flex-start;font-size:13px;border-top:1px solid var(--border,#EEF2F7);padding-top:8px;margin-top:8px;">
+            <span style="min-width:74px;color:var(--text-tertiary);font-size:12px;">${this.escHtml(ev.event_date || '')}</span>
+            <span style="min-width:40px;"><span style="padding:1px 7px;border-radius:4px;color:#fff;font-size:12px;background:${sevColor};">${this.escHtml(ev.severity_label || ev.severity || '')}</span></span>
+            <span style="flex:1;line-height:1.5;">${this.escHtml(ev.title || '')}${links}${verified}</span>
+            <span style="color:#DC2626;font-weight:600;min-width:54px;text-align:right;">−${ev.deduction}</span>
+          </div>`;
+        }).join('') + '</div>';
+      }
+      dimsHtml += `
+        <div class="card" style="border-left:4px solid ${color};">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-size:14px;font-weight:600;color:var(--text-primary);">${dimNames[code]}</span>
+            <span class="text-xs text-tertiary">权重 ${dim.weight_pct || ''}</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px;">
+            <span style="font-size:26px;font-weight:800;color:${color};">${score}</span>
+            <span class="tag" style="background:${color};color:#fff;font-size:12px;">${level}风险</span>
+            <span class="text-xs text-tertiary">扣分 ${deductions} · ${dim.events_count || 0} 条事件</span>
+          </div>
+          ${contrib}
+        </div>`;
+    }
+
+    return `
+      <div style="background:var(--bg-soft,#F8FAFC);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:var(--text-secondary);line-height:1.8;">
+        <div><strong>综合风险评分：</strong><span style="font-size:20px;font-weight:800;color:var(--text-primary);">${scoreText}</span> 分 · ${this.escHtml(d.risk_level || '')}</div>
+        <div><strong>计算模型：</strong>${this.escHtml(d.formula || '')}</div>
+        <div><strong>当前权重：</strong>${this.escHtml(weightsLine)}</div>
+        <div><strong>模型配置：</strong>${this.escHtml(d.model_profile || 'default')}${d.tail_boost != null ? ` · 尾部放大 ${d.tail_boost}` : ''}</div>
+        <div style="margin-top:8px;"><span style="display:inline-block;padding:3px 12px;border-radius:12px;color:#fff;font-size:12px;background:${basisColor};">${basisLabel}</span> ${this.escHtml(d.coverage_note || '')}</div>
+      </div>
+      <div class="grid-2" style="gap:14px;margin-bottom:8px;">${dimsHtml}</div>`;
   },
 
   renderScoreBar(label, weight, score) {
@@ -1335,6 +1842,10 @@ const App = {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
     document.getElementById('tab-' + tabId).classList.add('active');
+    // 商业价值 tab：懒加载真实商业价值评分（接 /commercial/score，401/402 由 api() 统一拦截）
+    if (tabId === 'commercial' && this.state.currentArtistId) {
+      this.loadCommercialScore(this.state.currentArtistId);
+    }
   },
 
   renderInsightTab(a) {
@@ -1473,48 +1984,56 @@ const App = {
     });
   },
 
-  drawCommercialRadar(a) {
+  drawCommercialRadar(a, scoreData) {
     const canvas = document.getElementById('commercialRadarCanvas');
     if (!canvas) return;
+    if (this.state.commercialRadarChart) {
+      this.state.commercialRadarChart.destroy();
+      this.state.commercialRadarChart = null;
+    }
     const ctx = canvas.getContext('2d');
 
-    // Normalize heat level to 0-100
-    const heatMap = { S: 95, A: 80, B: 60, C: 35, D: 15 };
-    const heatScore = heatMap[a.heat_level] || 30;
+    let heatScore, fansScore, quoteScore, purchaseScore;
+    if (scoreData && scoreData.dimensions) {
+      // 真实评分数据（来自 /commercial/score）
+      const d = scoreData.dimensions;
+      heatScore = d.heat_level?.score ?? 0;
+      fansScore = d.fans_scale?.score ?? 0;
+      quoteScore = d.commercial_quote?.score ?? 0;
+      purchaseScore = d.purchase_power?.score ?? 0;
+    } else {
+      // 启发式占位（未登录 / 离线 / 数据缺失），报价用中性值而非随机值
+      const heatMap = { S: 95, A: 80, B: 60, C: 35, D: 15 };
+      heatScore = heatMap[a.heat_level] || 30;
+      const parseFans = (v) => {
+        if (!v) return 30;
+        const n = parseFloat(String(v).replace(',', ''));
+        if (n >= 5000) return 95;
+        if (n >= 1000) return 80;
+        if (n >= 500) return 65;
+        if (n >= 100) return 45;
+        return 25;
+      };
+      fansScore = Math.max(parseFans(a.weibo_fans), parseFans(a.douyin_fans));
+      quoteScore = 30;
+      const purchaseMap = { s: 95, a: 80, b: 60, c: 35, d: 15 };
+      purchaseScore = (() => {
+        if (!a.fans_purchase_level) return 35;
+        const v = a.fans_purchase_level.toLowerCase();
+        for (const [k, sc] of Object.entries(purchaseMap)) {
+          if (v.includes(k)) return sc;
+        }
+        return 35;
+      })();
+    }
 
-    // Parse fans to approximate score
-    const parseFans = (v) => {
-      if (!v) return 30;
-      const n = parseFloat(String(v).replace(',', ''));
-      if (n >= 5000) return 95;
-      if (n >= 1000) return 80;
-      if (n >= 500) return 65;
-      if (n >= 100) return 45;
-      return 25;
-    };
-
-    const purchaseMap = { s: 95, a: 80, b: 60, c: 35, d: 15 };
-    const purchaseScore = (() => {
-      if (!a.fans_purchase_level) return 35;
-      const v = a.fans_purchase_level.toLowerCase();
-      for (const [k, score] of Object.entries(purchaseMap)) {
-        if (v.includes(k)) return score;
-      }
-      return 35;
-    })();
-
-    new Chart(ctx, {
+    this.state.commercialRadarChart = new Chart(ctx, {
       type: 'radar',
       data: {
-        labels: ['热度等级', '粉丝规模', '商务报价', '粉丝购买力'],
+        labels: ['热度等级', '粉丝量级', '商务报价', '粉丝购买力'],
         datasets: [{
           label: '商业价值',
-          data: [
-            heatScore,
-            Math.max(parseFans(a.weibo_fans), parseFans(a.douyin_fans)),
-            a.commercial_quote ? Math.min(95, 50 + Math.random() * 20) : 30,
-            purchaseScore
-          ],
+          data: [heatScore, fansScore, quoteScore, purchaseScore],
           backgroundColor: 'rgba(139, 92, 246, 0.15)',
           borderColor: 'rgba(139, 92, 246, 0.8)',
           borderWidth: 2,
@@ -1536,6 +2055,57 @@ const App = {
         plugins: { legend: { display: false } }
       }
     });
+  },
+
+  // ---- 商业价值评分懒加载（对接 /commercial/score，401/402 由 api() 统一拦截）----
+  async loadCommercialScore(artistId) {
+    // 已缓存则直接渲染，避免重复请求
+    if (this.state.commercialScores[artistId]) {
+      this.renderCommercialScore(this.state.commercialScores[artistId]);
+      return;
+    }
+    const a = this.state.currentArtist;
+    try {
+      const data = await this.api(`/commercial/score/${artistId}`);
+      this.state.commercialScores[artistId] = data;
+      this.renderCommercialScore(data);
+    } catch (e) {
+      // 401/402 已由 api() 弹出登录/升级框；此处回退为启发式占位，避免空白
+      const box = document.getElementById('commercialScoreBox');
+      if (box) box.innerHTML = `<div style="text-align:center;padding:18px;color:var(--text-tertiary);font-size:13px;">商业价值完整分析需登录后查看<br><span style="font-size:11px;">登录专业版可解锁四维评分、等级与趋势</span></div>`;
+      if (a) this.drawCommercialRadar(a);
+    }
+  },
+
+  renderCommercialScore(data) {
+    const box = document.getElementById('commercialScoreBox');
+    if (!box) return;
+    const d = data.dimensions || {};
+    const LABELS = { heat_level: '热度等级', fans_scale: '粉丝量级', commercial_quote: '商务报价', purchase_power: '粉丝购买力' };
+    const order = ['heat_level', 'fans_scale', 'commercial_quote', 'purchase_power'];
+    const bars = order.map(k =>
+      this.renderScoreBar(LABELS[k], (d[k] && d[k].weight) || '', (d[k] && d[k].score) ?? 0)
+    ).join('');
+    box.innerHTML = `
+      <div class="grid-2" style="align-items:center;margin-bottom:12px;">
+        <div style="text-align:center;">
+          <div style="font-size:38px;font-weight:800;color:var(--primary);">${data.total_score ?? '-'}</div>
+          <div style="font-size:14px;color:var(--text-secondary);margin-top:2px;">商业价值总分 · ${data.level || ''}</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px;">四维权重</div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.9;">
+            ${LABELS.heat_level} ${(d.heat_level && d.heat_level.weight) || ''}<br>
+            ${LABELS.fans_scale} ${(d.fans_scale && d.fans_scale.weight) || ''}<br>
+            ${LABELS.commercial_quote} ${(d.commercial_quote && d.commercial_quote.weight) || ''}<br>
+            ${LABELS.purchase_power} ${(d.purchase_power && d.purchase_power.weight) || ''}
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:4px;">${bars}</div>`;
+    // 用真实数据重绘雷达
+    const a = this.state.currentArtist;
+    if (a) this.drawCommercialRadar(a, data);
   },
 
   drawEventTimeline(events) {
@@ -2038,6 +2608,577 @@ const App = {
     }
   },
 
+  // ==================== 商务安全评分卡（P5-D）====================
+  async openSafetyCard(artistId) {
+    const url = `${this.API_BASE}/risk/safety-card/${artistId}`;
+    const headers = this.state.token ? { 'Authorization': `Bearer ${this.state.token}` } : {};
+    try {
+      this.showToast('正在生成安全评分卡...', 'info');
+      const resp = await fetch(url, { headers });
+      if (resp.status === 401) {
+        const ok = await this.promptLogin();
+        if (!ok) return;
+        return this.openSafetyCard(artistId);
+      }
+      if (!resp.ok) {
+        let detail = '生成失败';
+        try { const j = await resp.json(); detail = j.detail || detail; } catch (e) {}
+        throw new Error(detail);
+      }
+      const html = await resp.text();
+      const w = window.open('', '_blank');
+      if (!w) { this.showToast('预览被拦截，请允许弹窗', 'warning'); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+      this.showToast('安全评分卡已打开', 'success');
+    } catch (err) {
+      this.showToast('安全评分卡生成失败：' + err.message, 'error');
+    }
+  },
+
+  // ==================== 白标报告导出（P5-B）====================
+
+  openWhitelabelModal(artistId, artistName) {
+    this.state.wlArtistId = artistId;
+    this.state.wlArtistName = artistName;
+    this.state.wlLogoData = '';
+    let modal = document.getElementById('wlModal');
+    if (!modal) {
+      document.body.insertAdjacentHTML('beforeend', this._wlModalHTML());
+      modal = document.getElementById('wlModal');
+    }
+    modal.querySelector('#wlClientName').value = '';
+    modal.querySelector('#wlPrimary').value = '#2563EB';
+    modal.querySelector('#wlAccent').value = '#0F2A4A';
+    modal.querySelector('#wlFooter').value = '';
+    modal.querySelector('#wlLogoPreview').innerHTML = '';
+    modal.querySelector('#wlTemplateSel').value = '';
+    this.state.wlLogoData = '';
+    this.populateWhitelabelTemplates();
+    modal.style.display = 'flex';
+  },
+
+  closeWhitelabelModal() {
+    const m = document.getElementById('wlModal');
+    if (m) m.style.display = 'none';
+  },
+
+  _wlModalHTML() {
+    return `
+    <div class="modal-overlay" id="wlModal" style="display:none;position:fixed;inset:0;background:rgba(15,42,74,.5);z-index:9999;align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:16px;max-width:540px;width:92%;max-height:92vh;overflow:auto;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.35);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <h3 style="font-size:18px;color:#0F2A4A;margin:0;">🎨 白标报告导出</h3>
+          <button onclick="App.closeWhitelabelModal()" style="border:none;background:none;font-size:24px;line-height:1;cursor:pointer;color:#94A3B8;">×</button>
+        </div>
+        <p style="font-size:12px;color:#64748B;margin-bottom:16px;line-height:1.6;">贴上客户品牌（Logo / 主色 / 客户名），一键导出专属风险尽调报告，支撑 AFF 5–10万/份 接单交付。品牌色仅作用于视觉主题，评分仍为艺安查规范分。</p>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+          <label style="font-size:13px;color:#334155;font-weight:600;">客户 / 品牌名称</label>
+          <input id="wlClientName" type="text" placeholder="如：某某品牌公关部" style="padding:9px 12px;border:1px solid #E2E8F0;border-radius:9px;font-size:14px;" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+          <label style="font-size:13px;color:#334155;font-weight:600;">品牌 Logo（透明底 PNG，≤400KB）</label>
+          <input id="wlLogo" type="file" accept="image/*" onchange="App.onWhitelabelLogoChange(event)" style="font-size:13px;" />
+          <div id="wlLogoPreview" style="margin-top:6px;"></div>
+        </div>
+        <div style="display:flex;gap:14px;margin-bottom:12px;">
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+            <label style="font-size:13px;color:#334155;font-weight:600;">主色</label>
+            <input id="wlPrimary" type="color" value="#2563EB" style="width:100%;height:38px;border:1px solid #E2E8F0;border-radius:9px;padding:2px;" />
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+            <label style="font-size:13px;color:#334155;font-weight:600;">辅色</label>
+            <input id="wlAccent" type="color" value="#0F2A4A" style="width:100%;height:38px;border:1px solid #E2E8F0;border-radius:9px;padding:2px;" />
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+          <label style="font-size:13px;color:#334155;font-weight:600;">页脚备注</label>
+          <input id="wlFooter" type="text" placeholder="如：本报告仅供某某品牌内部决策参考" style="padding:9px 12px;border:1px solid #E2E8F0;border-radius:9px;font-size:14px;" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+          <label style="font-size:13px;color:#334155;font-weight:600;">已存模板（本地）</label>
+          <div style="display:flex;gap:8px;">
+            <select id="wlTemplateSel" onchange="App.loadWhitelabelTemplate()" style="flex:1;padding:9px 12px;border:1px solid #E2E8F0;border-radius:9px;font-size:14px;">
+              <option value="">— 选择模板 —</option>
+            </select>
+            <button onclick="App.deleteWhitelabelTemplate()" style="padding:8px 12px;border:1px solid #E2E8F0;border-radius:9px;background:#F8FAFC;cursor:pointer;font-size:13px;">删除</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="App.applyWhitelabel('preview')" style="padding:9px 14px;border:none;border-radius:9px;background:#0F2A4A;color:#fff;cursor:pointer;font-size:13px;">👁 预览</button>
+          <button onclick="App.applyWhitelabel('html')" style="padding:9px 14px;border:none;border-radius:9px;background:#2563EB;color:#fff;cursor:pointer;font-size:13px;">📥 下载HTML</button>
+          <button onclick="App.applyWhitelabel('pdf')" style="padding:9px 14px;border:none;border-radius:9px;background:#7C3AED;color:#fff;cursor:pointer;font-size:13px;">📄 下载PDF</button>
+          <button onclick="App.saveWhitelabelTemplate()" style="padding:9px 14px;border:1px solid #E2E8F0;border-radius:9px;background:#F8FAFC;cursor:pointer;font-size:13px;">💾 存为模板</button>
+        </div>
+      </div>
+    </div>`;
+  },
+
+  onWhitelabelLogoChange(e) {
+    const file = e.target.files && e.target.files[0];
+    const preview = document.getElementById('wlLogoPreview');
+    if (!file) { this.state.wlLogoData = ''; if (preview) preview.innerHTML = ''; return; }
+    if (file.size > 400 * 1024) {
+      this.showToast('Logo 不能超过 400KB', 'error');
+      e.target.value = '';
+      this.state.wlLogoData = '';
+      if (preview) preview.innerHTML = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.state.wlLogoData = reader.result;
+      if (preview) preview.innerHTML = '<img src="' + reader.result + '" style="height:48px;border:1px solid #E2E8F0;border-radius:8px;padding:4px;background:#fff;" />';
+    };
+    reader.readAsDataURL(file);
+  },
+
+  _wlCollectBrand() {
+    return {
+      client_name: (document.getElementById('wlClientName').value || '').trim(),
+      client_logo: this.state.wlLogoData || '',
+      primary_color: document.getElementById('wlPrimary').value || '#2563EB',
+      accent_color: document.getElementById('wlAccent').value || '#0F2A4A',
+      footer_note: (document.getElementById('wlFooter').value || '').trim(),
+    };
+  },
+
+  async applyWhitelabel(mode) {
+    const artistId = this.state.wlArtistId;
+    const artistName = this.state.wlArtistName;
+    if (!artistId) return;
+    const authedFetch = async (path, options) => {
+      const url = path.startsWith('http') ? path : `${this.API_BASE}${path}`;
+      const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+      if (this.state.token) headers['Authorization'] = `Bearer ${this.state.token}`;
+      let resp = await fetch(url, Object.assign({}, options, { headers }));
+      if (resp.status === 401) {
+        const ok = await this.promptLogin();
+        if (ok) {
+          if (this.state.token) headers['Authorization'] = `Bearer ${this.state.token}`;
+          resp = await fetch(url, Object.assign({}, options, { headers }));
+        }
+      }
+      return resp;
+    };
+    try {
+      this.showToast('正在生成白标报告...', 'info');
+      const brand = this._wlCollectBrand();
+      const resp = await authedFetch(`/risk/report/${artistId}/whitelabel`, {
+        method: 'POST',
+        body: JSON.stringify(brand),
+      });
+      if (!resp.ok) {
+        let detail = '生成失败';
+        try { const j = await resp.json(); detail = j.detail || detail; } catch (e) {}
+        if (resp.status === 401) detail = '请先登录后生成白标报告';
+        throw new Error(detail);
+      }
+      const html = await resp.text();
+      if (mode === 'preview') {
+        const w = window.open('', '_blank');
+        if (!w) { this.showToast('预览被拦截，请允许弹窗', 'warning'); return; }
+        w.document.open(); w.document.write(html); w.document.close();
+        this.showToast('预览已打开', 'success');
+      } else if (mode === 'html') {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const fn = (brand.client_name || artistName).replace(/[\\/:*?"<>|]/g, '_');
+        a.href = url; a.download = fn + '_白标报告.html';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showToast('白标HTML下载成功！', 'success');
+      } else if (mode === 'pdf') {
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:800px;height:auto;';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open(); doc.write(html); doc.close();
+        await new Promise(r => setTimeout(r, 500));
+        const element = doc.documentElement;
+        const opt = {
+          margin: [10, 10, 10, 10],
+          filename: (brand.client_name || artistName).replace(/[\\/:*?"<>|]/g, '_') + '_白标报告.pdf',
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        };
+        await html2pdf().set(opt).from(element).save();
+        document.body.removeChild(iframe);
+        this.showToast('白标PDF下载成功！', 'success');
+      }
+    } catch (err) {
+      this.showToast('白标生成失败：' + err.message, 'error');
+    }
+  },
+
+  // ---- 白标模板（localStorage，本地复用，支撑 AFF 接单）----
+  populateWhitelabelTemplates() { this.loadWhitelabelTemplates(); },
+  _wlTplKey() { return 'yiancha_wl_templates'; },
+  loadWhitelabelTemplates() {
+    try {
+      const raw = localStorage.getItem(this._wlTplKey());
+      const tpls = raw ? JSON.parse(raw) : [];
+      const sel = document.getElementById('wlTemplateSel');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">— 选择模板 —</option>' + tpls.map((t, i) =>
+        '<option value="' + i + '">' + (t.client_name || '未命名模板') + '</option>').join('');
+    } catch (e) {}
+  },
+  saveWhitelabelTemplate() {
+    const brand = this._wlCollectBrand();
+    if (!brand.client_name) { this.showToast('请先填写客户/品牌名称再存模板', 'warning'); return; }
+    try {
+      const raw = localStorage.getItem(this._wlTplKey());
+      const tpls = raw ? JSON.parse(raw) : [];
+      tpls.push(brand);
+      localStorage.setItem(this._wlTplKey(), JSON.stringify(tpls));
+      this.loadWhitelabelTemplates();
+      this.showToast('模板已保存（本地）', 'success');
+    } catch (e) { this.showToast('保存失败：' + e.message, 'error'); }
+  },
+  loadWhitelabelTemplate() {
+    const sel = document.getElementById('wlTemplateSel');
+    if (!sel || !sel.value) return;
+    try {
+      const tpls = JSON.parse(localStorage.getItem(this._wlTplKey()) || '[]');
+      const t = tpls[parseInt(sel.value, 10)];
+      if (!t) return;
+      document.getElementById('wlClientName').value = t.client_name || '';
+      document.getElementById('wlPrimary').value = t.primary_color || '#2563EB';
+      document.getElementById('wlAccent').value = t.accent_color || '#0F2A4A';
+      document.getElementById('wlFooter').value = t.footer_note || '';
+      if (t.client_logo) {
+        this.state.wlLogoData = t.client_logo;
+        const pv = document.getElementById('wlLogoPreview');
+        if (pv) pv.innerHTML = '<img src="' + t.client_logo + '" style="height:48px;border:1px solid #E2E8F0;border-radius:8px;padding:4px;background:#fff;" />';
+      }
+    } catch (e) {}
+  },
+  deleteWhitelabelTemplate() {
+    const sel = document.getElementById('wlTemplateSel');
+    if (!sel || !sel.value) return;
+    try {
+      const tpls = JSON.parse(localStorage.getItem(this._wlTplKey()) || '[]');
+      tpls.splice(parseInt(sel.value, 10), 1);
+      localStorage.setItem(this._wlTplKey(), JSON.stringify(tpls));
+      this.loadWhitelabelTemplates();
+      this.showToast('模板已删除', 'success');
+    } catch (e) {}
+  },
+
+  // ==================== 监控告警页面（#14）====================
+  async renderMonitoringPage(container) {
+    container.innerHTML = `
+      <div class="page-content" style="max-width:1200px;margin:0 auto;padding:var(--space-8) var(--space-6);">
+        <div class="flex justify-between items-center mb-6">
+          <div>
+            <h1 style="font-size:28px;font-weight:800;letter-spacing:-1px;">🔔 风险监控告警</h1>
+            <p class="text-secondary" style="margin-top:6px;">订阅重点艺人，系统持续监测新增风险事件，并通过邮件 / Webhook 推送到你自己的收件箱或风控系统。</p>
+          </div>
+          <button class="btn btn-primary" onclick="App.monitorRunCheck()">⚡ 立即检查</button>
+        </div>
+        <div id="monitorOverview" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:32px;"></div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">➕ 添加监控艺人</div>
+            <div class="card-body">
+              <div class="flex gap-2" style="margin-bottom:12px;">
+                <input class="form-input" id="monitorArtistInput" placeholder="输入艺人姓名，如 肖战" onkeydown="if(event.key==='Enter')App.monitorSearchArtist()">
+                <button class="btn btn-outline btn-sm" onclick="App.monitorSearchArtist()">搜索</button>
+              </div>
+              <div id="monitorSearchResults"></div>
+              <div id="monitorSubscribeForm" style="display:none;margin-top:12px;">
+                <div class="form-group">
+                  <label>通知邮箱（邮件渠道收件人）</label>
+                  <input class="form-input" id="monitorEmail" placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                  <label style="display:flex;align-items:center;gap:16px;font-weight:400;">
+                    <span><input type="checkbox" id="monitorChEmail" checked onchange="App.monitorToggleCh('email')"> 邮件</span>
+                    <span><input type="checkbox" id="monitorChWebhook" onchange="App.monitorToggleCh('webhook')"> Webhook</span>
+                  </label>
+                </div>
+                <div class="form-group" id="monitorWebhookGroup" style="display:none;">
+                  <label>出站 Webhook 地址（企业微信/飞书/钉钉机器人或自有系统）</label>
+                  <input class="form-input" id="monitorWebhook" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
+                  <span class="text-tertiary text-xs">系统将 POST JSON 预警到此地址，便于接入你的协作/风控系统。</span>
+                </div>
+                <button class="btn btn-primary btn-block" onclick="App.monitorSubscribe()">确认订阅监控</button>
+              </div>
+            </div>
+            <div class="card-header" style="border-top:1px solid var(--border-light);">📋 已监控艺人</div>
+            <div class="card-body">
+              <div id="monitorConfigList"><div class="loading-overlay"><div class="spinner"></div></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">⚠️ 预警动态</div>
+            <div class="card-body">
+              <div id="monitorAlertFeed"><div class="loading-overlay"><div class="spinner"></div></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:24px;">
+          <div class="card-header">📥 待核验事件 <span id="candCount" class="tag" style="background:#F0F9FF;color:#0369A1;">0</span>
+            <span class="text-tertiary text-xs" style="font-weight:400;margin-left:8px;">采集自动化扫到的疑似风险事件，审核通过即正式入库并触发预警</span>
+          </div>
+          <div class="card-body">
+            <div id="monitorCandidateList"><div class="loading-overlay"><div class="spinner"></div></div></div>
+          </div>
+        </div>
+      </div>
+    `;
+    this.loadMonitoringOverview();
+    this.loadMonitorConfigs();
+    this.loadMonitorAlerts();
+    this.loadMonitorCandidates();
+  },
+
+  monitorStatCard(label, value, color) {
+    return `<div class="stat-card">
+      <div class="stat-number" style="color:${color};-webkit-text-fill-color:${color};">${value}</div>
+      <div class="stat-label">${label}</div>
+    </div>`;
+  },
+
+  async loadMonitoringOverview() {
+    const el = document.getElementById('monitorOverview');
+    if (!el) return;
+    try {
+      const d = await this.api('/monitoring/overview');
+      const statusColor = d.db_status === 'ok' ? 'var(--risk-safe)' : 'var(--risk-extreme)';
+      el.innerHTML =
+        this.monitorStatCard('系统状态', d.api_status === 'healthy' ? '正常' : '异常', statusColor) +
+        this.monitorStatCard('监控艺人', d.monitored_artists, 'var(--primary)') +
+        this.monitorStatCard('待发送告警', d.unsent_alerts, d.unsent_alerts > 0 ? 'var(--risk-high)' : 'var(--primary)') +
+        this.monitorStatCard('风险事件总数', d.total_events, 'var(--accent-purple)') +
+        this.monitorStatCard('待核验候选', d.pending_candidates || 0, (d.pending_candidates || 0) > 0 ? 'var(--risk-high)' : 'var(--primary)');
+    } catch (e) {
+      el.innerHTML = `<div class="text-secondary text-sm">概览加载失败</div>`;
+    }
+  },
+
+  monitorSeverityTag(sev) {
+    const map = {
+      critical: ['tag-risk-high', '严重'],
+      high: ['tag-risk-high', '高'],
+      medium: ['tag-risk-mid', '中'],
+      low: ['tag-risk-safe', '低'],
+    };
+    const m = map[sev] || ['tag-risk-mid', sev || '?'];
+    return `<span class="tag ${m[0]}">${m[1]}</span>`;
+  },
+
+  monitorSeverityText(sev) {
+    return ({ critical: '严重', high: '高', medium: '中', low: '低' })[sev] || sev;
+  },
+
+  async loadMonitorConfigs() {
+    const el = document.getElementById('monitorConfigList');
+    if (!el) return;
+    try {
+      const d = await this.api('/monitoring/configs');
+      if (!d.configs.length) {
+        el.innerHTML = `<div class="text-tertiary text-sm" style="padding:12px 0;">暂无监控艺人，请在上方添加。</div>`;
+        return;
+      }
+      el.innerHTML = `<table class="data-table"><thead><tr><th>艺人</th><th>渠道</th><th>新增事件</th><th></th></tr></thead><tbody>` +
+        d.configs.map(c => {
+          const chans = (c.channels || []).map(ch => ch === 'email' ? '📧邮件' : (ch === 'webhook' ? '🔗Webhook' : ch)).join(' ');
+          const wh = c.webhook_url_masked ? `<div class="text-tertiary text-xs" style="margin-top:2px;">${c.webhook_url_masked}</div>` : '';
+          const em = (c.channels || []).includes('email') && c.notify_email ? `<div class="text-secondary text-xs" style="margin-top:2px;">${c.notify_email}</div>` : '';
+          return `
+          <tr>
+            <td><strong>${c.artist_name}</strong></td>
+            <td class="text-sm">${chans || '—'}${em}${wh}</td>
+            <td>${c.new_events_since_check > 0 ? `<span class="tag tag-risk-high">${c.new_events_since_check} 条</span>` : '<span class="text-tertiary text-sm">0</span>'}</td>
+            <td><button class="btn btn-ghost btn-xs" onclick="App.monitorUnsubscribe(${c.id})">取消</button></td>
+          </tr>`;
+        }).join('') +
+        `</tbody></table>`;
+    } catch (e) {
+      el.innerHTML = `<div class="text-tertiary text-sm" style="padding:12px 0;">监控列表加载失败</div>`;
+    }
+  },
+
+  async loadMonitorAlerts() {
+    const el = document.getElementById('monitorAlertFeed');
+    if (!el) return;
+    try {
+      const d = await this.api('/monitoring/alerts');
+      if (!d.alerts.length) {
+        el.innerHTML = `<div class="text-tertiary text-sm" style="padding:12px 0;">暂无预警记录。</div>`;
+        return;
+      }
+      el.innerHTML = d.alerts.map(a => `
+        <div style="padding:14px 0;border-bottom:1px solid var(--border-light);">
+          <div class="flex items-center gap-2 mb-4">
+            ${this.monitorSeverityTag(a.severity)}
+            <span class="text-tertiary text-xs">${String(a.created_at).replace('T', ' ').slice(0, 16)}</span>
+            ${a.is_sent ? '<span class="tag" style="background:#ECFDF5;color:#065F46;">已推送</span>' : '<span class="tag" style="background:#FEF2F2;color:#991B1B;">待推送</span>'}
+          </div>
+          <div class="text-sm" style="color:var(--text-secondary);">${a.message}</div>
+        </div>`).join('');
+    } catch (e) {
+      el.innerHTML = `<div class="text-tertiary text-sm" style="padding:12px 0;">预警加载失败（请先登录）</div>`;
+    }
+  },
+
+  async monitorSearchArtist() {
+    const input = document.getElementById('monitorArtistInput');
+    const q = (input.value || '').trim();
+    const box = document.getElementById('monitorSearchResults');
+    if (!q) { this.showToast('请输入艺人姓名', 'warning'); return; }
+    box.innerHTML = `<div class="text-tertiary text-sm">搜索中...</div>`;
+    try {
+      const data = await this.api(`/artists/search?keyword=${encodeURIComponent(q)}&limit=5`);
+      if (!data || !data.length) {
+        box.innerHTML = `<div class="text-tertiary text-sm">未找到匹配艺人</div>`;
+        return;
+      }
+      box.innerHTML = data.map(a => `
+        <div class="artist-card" style="padding:12px;margin-bottom:8px;cursor:pointer;" onclick="App.monitorSelectArtist(${a.id}, '${(a.name || '?').replace(/'/g, '')}')">
+          <div class="artist-avatar" style="width:40px;height:40px;font-size:16px;">${(a.name || '?').slice(0, 1)}</div>
+          <div class="artist-info"><div class="artist-name" style="font-size:15px;">${a.name}</div><div class="artist-meta">${a.heat_level || ''} · ${a.risk_level || ''}</div></div>
+        </div>`).join('');
+    } catch (e) {
+      box.innerHTML = `<div class="text-tertiary text-sm">搜索失败</div>`;
+    }
+  },
+
+  monitorSelectArtist(id, name) {
+    this.state.monitorSelectedId = id;
+    this.state.monitorSelectedName = name;
+    const cards = document.querySelectorAll('#monitorSearchResults .artist-card');
+    cards.forEach(el => el.style.borderColor = '');
+    if (event && event.currentTarget) event.currentTarget.style.borderColor = 'var(--primary)';
+    document.getElementById('monitorSubscribeForm').style.display = 'block';
+    this.showToast(`已选择：${name}`, 'info');
+  },
+
+  monitorToggleCh(ch) {
+    const box = document.getElementById(ch === 'webhook' ? 'monitorWebhookGroup' : null);
+    if (box) box.style.display = document.getElementById('monitorChWebhook').checked ? 'block' : 'none';
+  },
+
+  async monitorSubscribe() {
+    const id = this.state.monitorSelectedId;
+    if (!id) { this.showToast('请先搜索并选择艺人', 'warning'); return; }
+    const email = (document.getElementById('monitorEmail').value || '').trim();
+    const channels = [];
+    if (document.getElementById('monitorChEmail').checked) channels.push('email');
+    if (document.getElementById('monitorChWebhook').checked) channels.push('webhook');
+    const webhookUrl = (document.getElementById('monitorWebhook').value || '').trim();
+    const body = { artist_id: id, notify_email: email, channels, webhook_url: webhookUrl || undefined };
+    try {
+      const d = await this.api('/monitoring/subscribe', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      this.showToast(d.message || '订阅成功', 'success');
+      this.state.monitorSelectedId = null;
+      document.getElementById('monitorSubscribeForm').style.display = 'none';
+      document.getElementById('monitorArtistInput').value = '';
+      document.getElementById('monitorSearchResults').innerHTML = '';
+      document.getElementById('monitorWebhook').value = '';
+      document.getElementById('monitorChWebhook').checked = false;
+      document.getElementById('monitorWebhookGroup').style.display = 'none';
+      this.loadMonitorConfigs();
+      this.loadMonitoringOverview();
+    } catch (e) {
+      this.showToast(e.message || '订阅失败', 'error');
+    }
+  },
+
+  async monitorUnsubscribe(id) {
+    try {
+      await this.api(`/monitoring/configs/${id}`, { method: 'DELETE' });
+      this.showToast('已取消监控', 'success');
+      this.loadMonitorConfigs();
+      this.loadMonitoringOverview();
+    } catch (e) {
+      this.showToast(e.message || '取消失败', 'error');
+    }
+  },
+
+  async monitorRunCheck() {
+    try {
+      this.showToast('正在检查新增风险事件...', 'info');
+      const d = await this.api('/monitoring/check');
+      const n = d.new_alert_count || 0;
+      if (n === 0) {
+        this.showToast('检查完成：暂无新增风险事件 🎉', 'success');
+      } else {
+        this.showToast(`检查完成：发现 ${n} 条新增预警`, 'warning');
+        const lines = (d.new_alerts || []).map(a => `• [${this.monitorSeverityText(a.severity)}] ${a.artist_name}：${a.message}`).join('\n');
+        this.showRiskAlertModal({ message: `本次检查新增 ${n} 条预警：\n${lines}`, level_before: '', level_after: '', score_change: 0 });
+      }
+      this.loadMonitorAlerts();
+      this.loadMonitorConfigs();
+      this.loadMonitoringOverview();
+    } catch (e) {
+      this.showToast(e.message || '检查失败', 'error');
+    }
+  },
+
+  async loadMonitorCandidates() {
+    const el = document.getElementById('monitorCandidateList');
+    if (!el) return;
+    const cnt = document.getElementById('candCount');
+    try {
+      const d = await this.api('/monitoring/candidates');
+      if (cnt) cnt.textContent = d.total ? `${d.total} 条` : '0';
+      if (!d.candidates.length) {
+        el.innerHTML = `<div class="text-tertiary text-sm" style="padding:12px 0;">暂无待核验事件。采集自动化运行后，扫到的疑似风险事件会出现在这里供你审核。</div>`;
+        return;
+      }
+      el.innerHTML = d.candidates.map(c => `
+        <div style="padding:14px 0;border-bottom:1px solid var(--border-light);">
+          <div class="flex items-center gap-2 mb-4">
+            ${this.monitorSeverityTag(c.severity)}
+            <strong>${c.artist_name}</strong>
+            <span class="text-tertiary text-xs">${String(c.detected_at).replace('T', ' ').slice(0, 16)}</span>
+            <span class="tag" style="background:#F0F9FF;color:#0369A1;">${c.source_name || '自动采集'}</span>
+          </div>
+          <div class="text-sm" style="color:var(--text-secondary);margin-bottom:8px;">${c.title}</div>
+          ${c.description ? `<div class="text-tertiary text-xs" style="margin-bottom:8px;">${c.description}</div>` : ''}
+          <div class="flex gap-2">
+            <button class="btn btn-primary btn-xs" onclick="App.monitorApproveCandidate(${c.id})">✅ 通过入库</button>
+            <button class="btn btn-ghost btn-xs" onclick="App.monitorRejectCandidate(${c.id})">🗑 拒绝</button>
+            ${c.source_url ? `<a class="btn btn-outline btn-xs" href="${c.source_url}" target="_blank" rel="noopener">查看来源</a>` : ''}
+          </div>
+        </div>`).join('');
+    } catch (e) {
+      if (cnt) cnt.textContent = '0';
+      el.innerHTML = `<div class="text-tertiary text-sm" style="padding:12px 0;">待核验列表加载失败（请先登录）</div>`;
+    }
+  },
+
+  async monitorApproveCandidate(id) {
+    try {
+      const d = await this.api(`/monitoring/candidates/${id}/approve`, { method: 'POST' });
+      this.showToast(d.message || '已通过并入库', 'success');
+      this.loadMonitorCandidates();
+      this.loadMonitoringOverview();
+      this.loadMonitorConfigs();
+    } catch (e) {
+      this.showToast(e.message || '操作失败', 'error');
+    }
+  },
+
+  async monitorRejectCandidate(id) {
+    try {
+      const d = await this.api(`/monitoring/candidates/${id}/reject`, { method: 'POST' });
+      this.showToast(d.message || '已拒绝', 'success');
+      this.loadMonitorCandidates();
+      this.loadMonitoringOverview();
+    } catch (e) {
+      this.showToast(e.message || '操作失败', 'error');
+    }
+  },
+
   // ---- Risk Alert ----
   async checkRiskAlert(artistId) {
     try {
@@ -2106,14 +3247,22 @@ const App = {
     document.body.appendChild(modal);
   },
 
-  // ---- Report Preview ----
+  // ---- Report Preview (inline) ----
   async previewRiskReport(artistId) {
     try {
-      const data = await this.api(`/risk/report/${artistId}`);
-      this.showToast('报告生成成功，正在打开预览...', 'info');
-
-      // 在新窗口打开报告
-      window.open(data.report_url, '_blank');
+      this.showToast('正在生成预览...', 'info');
+      const resp = await fetch(`${this.API_BASE}/risk/report/${artistId}/download?inline=true`);
+      if (!resp.ok) throw new Error('预览失败');
+      const html = await resp.text();
+      const w = window.open('', '_blank');
+      if (!w) {
+        this.showToast('预览被浏览器拦截，请允许弹窗后重试', 'warning');
+        return;
+      }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      this.showToast('预览已打开', 'success');
     } catch (err) {
       this.showToast(`报告预览失败：${err.message}`, 'error');
     }
