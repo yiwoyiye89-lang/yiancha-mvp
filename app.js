@@ -1599,6 +1599,8 @@ const App = {
             <button class="btn btn-primary" onclick="App.downloadRiskReport(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📥 下载综合档案报告</button>
             <button class="btn" style="background:var(--primary-dark);color:#fff;border:none;margin-left:8px;" onclick="App.downloadRiskReportPDF(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📄 下载PDF</button>
             <button class="btn" style="background:linear-gradient(135deg,#7C3AED,#DB2777);color:#fff;border:none;margin-left:8px;" onclick="App.openWhitelabelModal(${a.id}, '${a.name.replace(/'/g, "\\'")}')">🎨 白标导出</button>
+            <button class="btn" style="background:#0EA5E9;color:#fff;border:none;margin-left:8px;" onclick="App.downloadRiskReportDocx(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📝 Word</button>
+            <button class="btn" style="background:#F59E0B;color:#fff;border:none;margin-left:8px;" onclick="App.downloadRiskReportPptx(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📊 PPT</button>
             <button class="btn" style="background:linear-gradient(135deg,#059669,#10B981);color:#fff;border:none;margin-left:8px;" onclick="App.openSafetyCard(${a.id})">🛡 安全评分卡</button>
           </div>
           <div class="card mt-6" id="explainPanelCard">
@@ -1667,6 +1669,20 @@ const App = {
                 <div style="max-width:280px;margin:0 auto;">
                   <canvas id="commercialRadarCanvas" width="320" height="240"></canvas>
                 </div>
+              </div>
+            </div>
+          </div>
+          <div class="card mt-6">
+            <div class="card-header">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span>代言战报 · 商业战绩</span>
+                <span class="tag" style="font-size:11px;padding:2px 8px;background:var(--gray-100, #F3F4F6);color:var(--text-secondary);">AFF 粉丝力分析</span>
+                <span style="font-size:11px;color:var(--text-tertiary);">来源：艺人代言战报全量数据 · 经清洗与公开核对</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="salesReportBox">
+                <div style="text-align:center;padding:24px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载代言战报...</span></div>
               </div>
             </div>
           </div>
@@ -1779,6 +1795,9 @@ const App = {
 
       // Pre-load brand endorsements
       this.loadEndorsements(id);
+
+      // 商业价值维度：加载代言战报（AFF 粉丝力分析数据，公开端点）
+      this.loadSalesReports(id);
 
     } catch (err) {
       document.querySelector('.page-content').innerHTML = `
@@ -2203,6 +2222,110 @@ const App = {
     // 用真实数据重绘雷达
     const a = this.state.currentArtist;
     if (a) this.drawCommercialRadar(a, data);
+  },
+
+  // ---- 代言战报（商业战绩）维度：AFF 粉丝力分析数据接入 ----
+  async loadSalesReports(artistId) {
+    const box = document.getElementById('salesReportBox');
+    if (!box) return;
+    try {
+      const [summary, list] = await Promise.all([
+        this.api(`/commercial/sales-summary/${artistId}`),
+        this.api(`/commercial/sales-reports?artist_id=${artistId}&limit=80&sort=gmv`)
+      ]);
+      this.renderSalesReports(box, summary, list);
+    } catch (e) {
+      if (box) box.innerHTML = `<div style="text-align:center;padding:18px;color:var(--text-tertiary);font-size:13px;">代言战报加载失败：${e.message || e}</div>`;
+    }
+  },
+
+  renderSalesReports(box, s, list) {
+    if (!s || s.report_count === 0) {
+      box.innerHTML = `<div style="text-align:center;padding:18px;color:var(--text-tertiary);font-size:13px;">该艺人暂无代言战报数据（尚未纳入 AFF 战报监测）</div>`;
+      return;
+    }
+    const srcMeta = {
+      official: { t: '品牌官方', c: 'var(--risk-safe,#10B981)' },
+      mixed:    { t: '官方+媒体', c: '#2563EB' },
+      third:    { t: '第三方', c: 'var(--text-secondary)' },
+      fans:     { t: '粉丝统计', c: '#F59E0B' },
+      other:    { t: '其他', c: 'var(--text-tertiary)' },
+      unknown:  { t: '未标注', c: 'var(--text-tertiary)' },
+    };
+    const srcTag = (lv) => {
+      const m = srcMeta[lv] || srcMeta.unknown;
+      return `<span style="font-size:11px;padding:1px 7px;border-radius:10px;background:${m.c}1A;color:${m.c};white-space:nowrap;">${m.t}</span>`;
+    };
+    const gmvWan = (w) => w == null ? '-' : (w >= 10000 ? (w / 10000).toFixed(2) + '亿' : Math.round(w) + '万');
+
+    const stats = `
+      <div class="grid-2 mb-4">
+        <div class="stat-card"><div class="stat-number" style="color:var(--primary);">${s.report_count}</div><div class="stat-label">代言战报数</div></div>
+        <div class="stat-card"><div class="stat-number" style="color:var(--value-s,#059669);">${s.total_gmv_yi}亿</div><div class="stat-label">可量化GMV(下限)</div></div>
+        <div class="stat-card"><div class="stat-number" style="color:var(--text-primary,#111);">${s.brand_count}</div><div class="stat-label">覆盖品牌</div></div>
+        <div class="stat-card"><div class="stat-number" style="color:var(--risk-safe,#10B981);">${s.high_conf_pct}%</div><div class="stat-label">高可信占比</div></div>
+      </div>`;
+    const note = `<div style="font-size:11px;color:var(--text-tertiary);margin:-4px 0 12px;line-height:1.6;">注：GMV 为战报公开口径下限，实际带货往往更高；${s.verified_count} 条已与公开数据核对${s.year_span ? '；覆盖 ' + s.year_span[0] + '–' + s.year_span[1] + ' 年' : ''}。</div>`;
+
+    let top5 = '';
+    if (s.top5_gmv && s.top5_gmv.length) {
+      top5 = `<div style="margin:4px 0 14px;">
+        <div style="font-weight:600;font-size:13px;color:var(--text-secondary);margin-bottom:8px;">🔥 带货高光 TOP${s.top5_gmv.length}</div>
+        ${s.top5_gmv.map((r, i) => `
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border,#E5E7EB);">
+            <span style="font-size:12px;color:var(--text-tertiary);width:18px;">${i + 1}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:13px;">${r.brand}${r.verified ? ' <span style="color:var(--risk-safe,#10B981);font-size:11px;">✓</span>' : ''}</div>
+              <div style="font-size:11px;color:var(--text-tertiary);">${r.category || ''}${r.report_period ? ' · ' + r.report_period : ''}</div>
+            </div>
+            <span style="font-weight:700;color:var(--value-s,#059669);font-size:14px;">${gmvWan(r.gmv_wan)}</span>
+          </div>`).join('')}
+      </div>`;
+    }
+
+    const rows = list.reports.map(r => `
+      <tr>
+        <td style="font-weight:600;">${r.brand || '-'}</td>
+        <td>${r.category || '-'}</td>
+        <td>${r.report_period || '-'}</td>
+        <td style="color:var(--value-s,#059669);font-weight:600;white-space:nowrap;">${gmvWan(r.gmv_wan)}</td>
+        <td>${srcTag(r.source_level)}</td>
+        <td style="color:var(--text-secondary);font-size:12px;max-width:260px;">${(r.highlight || r.volume || '-')}${r.verified ? ` <span style="color:var(--risk-safe,#10B981);" title="${(r.verify_note || '').replace(/"/g, '&quot;')}">✓核对</span>` : ''}</td>
+      </tr>`).join('');
+    const table = `<div class="table-responsive" style="margin-top:6px;">
+      <table class="data-table">
+        <thead><tr><td>品牌</td><td>品类</td><td>周期</td><td>GMV</td><td>来源</td><td>高光 / 备注</td></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+
+    const leaderboardBtn = `<div style="margin-top:14px;text-align:center;">
+      <button class="btn btn-ghost" style="font-size:12px;padding:6px 14px;" onclick="App.toggleSalesLeaderboard()">📊 查看全行业代言战报榜 TOP20</button>
+      <div id="salesLeaderboardBox" style="margin-top:10px;display:none;"></div>
+    </div>`;
+
+    box.innerHTML = stats + note + top5 + table + leaderboardBtn;
+  },
+
+  async toggleSalesLeaderboard() {
+    const box = document.getElementById('salesLeaderboardBox');
+    if (!box) return;
+    if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = 'block';
+    box.innerHTML = `<div style="text-align:center;padding:14px;"><div class="spinner"></div></div>`;
+    try {
+      const d = await this.api('/commercial/sales-leaderboard?metric=gmv&limit=20');
+      const rows = d.leaderboard.map((r, i) => `<tr>
+        <td style="width:28px;color:var(--text-tertiary);">${i + 1}</td>
+        <td style="font-weight:600;">${r.artist_name}${r.risk_level && r.risk_level.indexOf('高') >= 0 ? ' <span class="tag tag-risk-high" style="font-size:10px;">高风险</span>' : ''}</td>
+        <td>${r.report_count}</td>
+        <td style="color:var(--value-s,#059669);font-weight:600;">${r.total_gmv_yi}亿</td>
+        <td style="color:var(--text-tertiary);font-size:11px;">${r.verified_count ? r.verified_count + '✓' : '-'}</td>
+      </tr>`).join('');
+      box.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">按累计可量化 GMV 排行（品牌选代言人参考）</div>
+        <div class="table-responsive"><table class="data-table"><thead><tr><td>#</td><td>艺人</td><td>战报数</td><td>GMV</td><td>核对</td></tr></thead><tbody>${rows}</tbody></table></div>`;
+    } catch (e) {
+      box.innerHTML = `<div style="color:var(--text-tertiary);font-size:12px;">榜单加载失败</div>`;
+    }
   },
 
   drawEventTimeline(events) {
@@ -2672,6 +2795,32 @@ const App = {
       this.showToast('报告下载成功！', 'success');
     } catch (err) {
       this.showToast(`报告下载失败：${err.message}`, 'error');
+    }
+  },
+
+  async downloadRiskReportDocx(artistId, artistName) {
+    try {
+      this.showToast('正在生成 Word 报告...', 'info');
+      const a = document.createElement('a');
+      a.href = `${this.API_BASE}/risk/report/${artistId}/docx`;
+      a.download = `${artistName}_综合档案报告.docx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      this.showToast('Word 报告下载成功！', 'success');
+    } catch (err) {
+      this.showToast(`Word 报告下载失败：${err.message}`, 'error');
+    }
+  },
+
+  async downloadRiskReportPptx(artistId, artistName) {
+    try {
+      this.showToast('正在生成 PPT 报告...', 'info');
+      const a = document.createElement('a');
+      a.href = `${this.API_BASE}/risk/report/${artistId}/pptx`;
+      a.download = `${artistName}_综合档案报告.pptx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      this.showToast('PPT 报告下载成功！', 'success');
+    } catch (err) {
+      this.showToast(`PPT 报告下载失败：${err.message}`, 'error');
     }
   },
 
