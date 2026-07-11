@@ -1682,6 +1682,9 @@ canvas { max-width: 100%; }
     <button class="btn btn-ghost btn-sm nav-btn" onclick="App.openBusinessModal()" style="margin-right:6px;">
       <span style="font-size:16px;">💼</span><span class="nav-label">商务合作</span>
     </button>
+    <button class="btn btn-outline btn-sm nav-btn" onclick="App.openBrandMatch()" style="margin-right:6px;color:var(--value-s,#059669);border-color:var(--value-s,#059669);">
+      <span style="font-size:16px;">🎯</span><span class="nav-label">品牌找艺人</span>
+    </button>
     <button class="btn btn-ghost btn-sm nav-btn" onclick="App.openAdminLogin()" style="margin-right:6px;">
       <span style="font-size:16px;">⚙</span><span class="nav-label">管理</span>
     </button>
@@ -1728,9 +1731,29 @@ canvas { max-width: 100%; }
           <input class="form-input" type="password" id="regPassword2" placeholder="请再次输入密码" required>
         </div>
         <div class="form-group">
-          <label>内测邀请码 <span style="color:var(--danger);">*</span></label>
+          <label>我的身份</label>
+          <select class="form-input" id="regRole">
+            <option value="individual">个人 / 普通用户</option>
+            <option value="brand">品牌方（找艺人代言）</option>
+            <option value="mcn">MCN / 经纪公司</option>
+            <option value="agency">广告代理</option>
+            <option value="production">影视制作</option>
+            <option value="government">政府 / 媒体</option>
+          </select>
+          <div id="roleHint" style="font-size:11px;margin-top:4px;color:var(--text-tertiary);">品牌/经纪/代理注册即开通专业版试用，可立即使用「品牌找艺人」与需求沉淀。</div>
+        </div>
+        <div class="form-group">
+          <label>公司 / 机构 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <input class="form-input" type="text" id="regCompany" placeholder="如：某某品牌市场部 / 某某经纪公司">
+        </div>
+        <div class="form-group">
+          <label>昵称 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <input class="form-input" type="text" id="regNickname" placeholder="展示名称">
+        </div>
+        <div class="form-group" id="inviteGroup">
+          <label>内测邀请码 <span id="inviteReqMark" style="color:var(--danger);">*</span></label>
           <div style="display:flex; gap:8px;">
-            <input class="form-input" type="text" id="regInviteCode" placeholder="请输入邀请码（内测阶段必填）" maxlength="8" required style="flex:1;">
+            <input class="form-input" type="text" id="regInviteCode" placeholder="个人用户请填邀请码；品牌/经纪可留空" maxlength="8" style="flex:1;">
             <button type="button" class="btn btn-sm" onclick="App.verifyInviteCode()" style="white-space:nowrap;padding:8px 12px;">验证</button>
           </div>
           <div id="inviteVerifyMsg" style="font-size:12px; margin-top:4px;"></div>
@@ -1827,6 +1850,102 @@ canvas { max-width: 100%; }
         </div>
         <button class="btn btn-primary btn-block btn-lg" type="submit">提交申请</button>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Brand Match Modal (品牌找艺人 + 飞轮需求) -->
+<div class="modal-overlay" id="brandMatchModal" onclick="App.closeBrandMatch()">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>🎯 品牌找艺人</h3>
+      <button class="modal-close" onclick="App.closeBrandMatch()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="bmTabFind" onclick="App.switchBrandTab('find')">填需求找艺人</div>
+        <div class="auth-tab" id="bmTabMy" onclick="App.switchBrandTab('my')" style="display:none;">我的需求</div>
+        <div class="auth-tab" id="bmTabBoard" onclick="App.switchBrandTab('board')" style="display:none;">需求看板</div>
+      </div>
+
+      <!-- 找艺人 -->
+      <div id="bmFindPanel" class="auth-form">
+        <p class="text-sm text-secondary">填写品牌代言需求，系统按 <b>GCV × 品牌匹配(BFI)</b> 自动排出候选艺人榜。品牌/经纪账号登录后需求会自动沉淀，便于后续接单跟进。</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label>行业 / 品类 <span style="color:var(--danger);">*</span></label>
+            <select class="form-input" id="bmIndustry">
+              <option value="">请选择</option>
+              <option>美妆</option><option>护肤</option><option>食品</option><option>饮料</option>
+              <option>3C数码</option><option>家电</option><option>服饰</option><option>运动</option>
+              <option>汽车</option><option>母婴</option><option>奢侈品</option><option>游戏</option>
+              <option>文旅</option><option>金融</option><option>教育</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>预算区间</label>
+            <select class="form-input" id="bmBudget">
+              <option value="">不限</option>
+              <option>500万以下</option>
+              <option>500-1000万</option>
+              <option>1000万以上</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>目标性别</label>
+            <select class="form-input" id="bmGender">
+              <option value="不限">不限</option><option value="男">男</option><option value="女">女</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>品牌调性</label>
+            <select class="form-input" id="bmTone">
+              <option value="">不限</option>
+              <option>高端</option><option>年轻</option><option>时尚</option><option>国潮</option>
+              <option>科技</option><option>家庭</option><option>运动</option><option>亲民</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>合作场景</label>
+            <select class="form-input" id="bmScenario">
+              <option value="ambassador">品牌代言(默认)</option>
+              <option value="ecommerce">电商带货</option>
+              <option value="brand">品牌曝光</option>
+              <option value="event">活动出席</option>
+              <option value="base">综合</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>风险偏好</label>
+            <select class="form-input" id="bmRisk">
+              <option value="exclude_high">排除高风险</option>
+              <option value="any">不限</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>目标人群备注 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <input class="form-input" type="text" id="bmAudience" placeholder="如：女性 18-25 / 一二线白领">
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" type="button" onclick="App.runBrandMatch()">生成候选艺人榜</button>
+        <div id="bmResult" style="margin-top:16px;"></div>
+        <div id="bmSaveHint" style="font-size:12px;color:var(--text-tertiary);margin-top:8px;"></div>
+      </div>
+
+      <!-- 我的需求 -->
+      <div id="bmMyPanel" class="auth-form" style="display:none;">
+        <div id="bmMyList"></div>
+      </div>
+
+      <!-- 需求看板 -->
+      <div id="bmBoardPanel" class="auth-form" style="display:none;">
+        <p class="text-sm text-secondary">真实品牌需求（飞轮：把自家艺人推给有需要的品牌）。</p>
+        <div id="bmBoardList"></div>
+      </div>
     </div>
   </div>
 </div>
