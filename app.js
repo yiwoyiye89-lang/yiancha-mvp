@@ -1651,6 +1651,20 @@ const App = {
               </div>
             </div>
           </div>
+          <div class="card mt-6" id="gcvCard">
+            <div class="card-header">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span>商业价值评估 v2 · GCV 模型</span>
+                <span class="tag" style="font-size:11px;padding:2px 8px;background:#eef2ff;color:#4338ca;">与风险模型互补</span>
+                <span style="font-size:11px;color:var(--text-tertiary);">转化力自动吃 AFF 战报 · 每维带数据置信度</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="gcvBox">
+                <div style="text-align:center;padding:24px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载 GCV 评估...</span></div>
+              </div>
+            </div>
+          </div>
           <div class="grid-2">
             <div class="card">
               <div class="card-header">商务信息</div>
@@ -1798,6 +1812,9 @@ const App = {
 
       // 商业价值维度：加载代言战报（AFF 粉丝力分析数据，公开端点）
       this.loadSalesReports(id);
+
+      // 商业价值 v2：GCV 五维评估 + 三段式（转化力自动吃 AFF 战报）
+      this.loadGCV(id);
 
     } catch (err) {
       document.querySelector('.page-content').innerHTML = `
@@ -2239,6 +2256,165 @@ const App = {
     }
   },
 
+  // ---- GCV v2 商业价值评估（五维 + 置信度 + 三段式）----
+  async loadGCV(artistId, brand) {
+    const box = document.getElementById('gcvBox');
+    if (!box) return;
+    let url = `/commercial/gcv/${artistId}`;
+    if (brand) {
+      const p = [];
+      if (brand.audience != null) p.push('brand_audience=' + brand.audience);
+      if (brand.tone != null) p.push('brand_tone=' + brand.tone);
+      if (brand.category != null) p.push('brand_category=' + brand.category);
+      if (brand.exclusive != null) p.push('brand_exclusive=' + brand.exclusive);
+      if (brand.conflict != null) p.push('brand_conflict=' + brand.conflict);
+      if (p.length) url += '?' + p.join('&');
+    }
+    try {
+      const d = await this.api(url);
+      this.renderGCV(box, d, artistId);
+    } catch (e) {
+      box.innerHTML = `<div style="text-align:center;padding:18px;color:var(--text-tertiary);font-size:13px;">GCV 评估加载失败：${e.message || e}</div>`;
+    }
+  },
+
+  gcvConfColor(c) {
+    if (c >= 0.6) return 'var(--risk-safe,#10B981)';
+    if (c >= 0.4) return 'var(--amber,#F59E0B)';
+    return 'var(--risk-high,#EF4444)';
+  },
+  gcvConfLabel(c) {
+    if (c >= 0.6) return '数据较充分';
+    if (c >= 0.4) return '部分数据';
+    return '数据待补';
+  },
+
+  renderGCV(box, d, artistId) {
+    const conf = d.gcv_confidence;
+    const dims = d.dimensions;
+    const dimOrder = ['conversion', 'fans_asset', 'traffic', 'image', 'work'];
+    const dimRows = dimOrder.map(k => {
+      const dv = dims[k];
+      return `<tr>
+        <td style="font-weight:600;">${dv.label}</td>
+        <td style="text-align:center;font-weight:700;">${dv.score}</td>
+        <td style="text-align:center;">
+          <div style="display:inline-flex;align-items:center;gap:6px;justify-content:center;">
+            <div style="width:54px;height:6px;border-radius:4px;background:#eee;overflow:hidden;"><div style="width:${Math.round(dv.confidence * 100)}%;height:100%;background:${this.gcvConfColor(dv.confidence)};"></div></div>
+            <span style="font-size:11px;color:${this.gcvConfColor(dv.confidence)};">${Math.round(dv.confidence * 100)}%</span>
+          </div>
+        </td>
+        <td style="font-size:11px;color:var(--text-tertiary);max-width:200px;">${this.gcvDimNote(k, dv)}</td>
+      </tr>`;
+    }).join('');
+
+    const vmiTxt = d.vmi == null ? '报价缺失' : (d.vmi >= 15 ? '⭐⭐⭐⭐ 性价比优秀' : d.vmi >= 6 ? '⭐⭐⭐ 性价比良好' : d.vmi >= 3 ? '⭐⭐ 性价比一般' : '⭐ 性价比偏低');
+
+    box.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-bottom:14px;">
+        <div style="text-align:center;">
+          <div style="font-size:13px;color:var(--text-tertiary);">GCV 通用商业价值分</div>
+          <div style="font-size:40px;font-weight:800;color:var(--primary);line-height:1.1;">${d.gcv}</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">势能后 · 百分位前 ${d.gcv_percentile != null ? d.gcv_percentile : '—'}%</div>
+        </div>
+        <div style="flex:1;min-width:220px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+            <span style="color:var(--text-secondary);">整体数据置信度</span>
+            <span style="font-weight:700;color:${this.gcvConfColor(conf)};">${Math.round(conf * 100)}% · ${this.gcvConfLabel(conf)}</span>
+          </div>
+          <div style="width:100%;height:10px;border-radius:6px;background:#eee;overflow:hidden;"><div style="width:${Math.round(conf * 100)}%;height:100%;background:${this.gcvConfColor(conf)};"></div></div>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">转化力来自 AFF 战报(自动) · 粉丝/形象/作品力为人工录入位，置信度随数据入库爬升</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="align-items:start;">
+        <div class="card" style="background:var(--gray-50,#F9FAFB);">
+          <div style="font-weight:700;font-size:14px;margin-bottom:8px;color:var(--primary);">① 绝对价值 GCV（五维）</div>
+          <div style="max-width:300px;margin:0 auto 8px;"><canvas id="gcvRadarCanvas" height="240"></canvas></div>
+          <div class="table-responsive"><table class="data-table" style="font-size:12px;">
+            <thead><tr><td>维度</td><td style="text-align:center;">分</td><td style="text-align:center;">置信度</td><td>说明</td></tr></thead>
+            <tbody>${dimRows}</tbody>
+          </table></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="card" style="background:var(--gray-50,#F9FAFB);">
+            <div style="font-weight:700;font-size:14px;margin-bottom:8px;color:var(--pink,#EC4899);">② 品牌匹配 BFI（针对具体品牌）</div>
+            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">当前：<b style="color:var(--pink,#EC4899);">BFI=${d.bfi}</b> ${d.bfi_detail.mode === 'default' ? '（未指定品牌，取中性 1.0）' : '（已按输入测算）'}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
+              ${this.gcvMatchSelect('audience', '人群重合', '弱', '中', '强')}
+              ${this.gcvMatchSelect('tone', '调性契合', '弱', '中', '强')}
+              ${this.gcvMatchSelect('category', '品类适配', '弱', '中', '强')}
+              ${this.gcvMatchSelect('exclusive', '独家首发', '否', '一般', '是')}
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:8px;color:var(--risk-high,#EF4444);">
+              <input type="checkbox" id="gcvConflict"> 已代言同品类竞品（一票否决，压到 0.5）
+            </label>
+            <button class="btn btn-primary" style="width:100%;margin-top:10px;font-size:13px;" onclick="App.runGcvMatch(${artistId})">测算该品牌匹配价值</button>
+          </div>
+          <div class="card" style="background:var(--gray-50,#F9FAFB);">
+            <div style="font-weight:700;font-size:14px;margin-bottom:8px;color:var(--value-s,#059669);">③ 风险评估 + ROI 建议（VMI）</div>
+            <div style="font-size:13px;line-height:1.9;">
+              <div>风险折损 RDF：<b>${d.rdf}</b> <span style="color:var(--text-tertiary);font-size:12px;">(${d.rdf_detail.band})</span></div>
+              <div>品牌合作价值：<b style="color:var(--value-s,#059669);font-size:16px;">${d.brand_value}</b></div>
+              <div>商务报价：<b>${d.quote_wan != null ? d.quote_wan + ' 万/年' : '未录入'}</b></div>
+              <div>性价比指数 VMI：<b style="color:var(--value-s,#059669);font-size:16px;">${d.vmi != null ? d.vmi : '—'}</b> <span style="color:var(--text-tertiary);font-size:12px;">${vmiTxt}</span></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">VMI = 品牌合作价值 ÷ (代言费/100万)，越高越划算；可与同预算艺人横向比"性价比之王"。</div>
+          </div>
+        </div>
+      </div>`;
+
+    // 画雷达
+    this.drawGcvRadar(dims);
+  },
+
+  gcvDimNote(k, dv) {
+    const map = {
+      conversion: dv.detail && dv.detail.reports ? `AFF战报${dv.detail.reports}条${dv.detail.gmv_wan ? '·GMV' + (dv.detail.gmv_wan >= 10000 ? (dv.detail.gmv_wan/10000).toFixed(1) + '亿' : Math.round(dv.detail.gmv_wan) + '万') : ''}` : '自动·待补GMV',
+      fans_asset: '超话/站子入库前人工',
+      traffic: dv.detail && dv.detail.heat ? `微博${dv.detail.weibo || '-'}·抖音${dv.detail.douyin || '-'}·热度${dv.detail.heat}` : '半自动',
+      image: '舆情词云入库前人工',
+      work: '奖项库入库前人工',
+    };
+    return map[k] || '';
+  },
+
+  gcvMatchSelect(key, label, lo, mid, hi) {
+    return `<div><div style="color:var(--text-secondary);margin-bottom:2px;">${label}</div>
+      <select id="gcv_${key}" style="width:100%;padding:5px 8px;border:1px solid var(--border,#E5E7EB);border-radius:7px;font-size:12px;">
+        <option value="0.5">${lo}</option><option value="1" selected>${mid}</option><option value="1.5">${hi}</option>
+      </select></div>`;
+  },
+
+  runGcvMatch(artistId) {
+    const get = (id) => parseFloat(document.getElementById('gcv_' + id).value);
+    const conflict = document.getElementById('gcvConflict').checked ? 0.5 : 1.0;
+    const brand = {
+      audience: get('audience'), tone: get('tone'), category: get('category'),
+      exclusive: get('exclusive'), conflict: conflict,
+    };
+    this.loadGCV(artistId, brand);
+  },
+
+  drawGcvRadar(dims) {
+    const canvas = document.getElementById('gcvRadarCanvas');
+    if (!canvas) return;
+    if (this.state.gcvChart) { try { this.state.gcvChart.destroy(); } catch (e) {} }
+    const labels = Object.values(dims).map(d => d.label);
+    const scores = Object.values(dims).map(d => d.score);
+    try {
+      this.state.gcvChart = new Chart(canvas, {
+        type: 'radar',
+        data: { labels, datasets: [{ label: 'GCV 五维', data: scores,
+          backgroundColor: 'rgba(37,99,235,0.18)', borderColor: '#2563EB', borderWidth: 2,
+          pointBackgroundColor: '#2563EB', pointRadius: 3 }] },
+        options: { responsive: true,
+          scales: { r: { beginAtZero: true, max: 100, ticks: { font: { size: 9 }, stepSize: 20 }, grid: { color: '#E5E7EB' }, angleLines: { color: '#E5E7EB' }, pointLabels: { font: { size: 11 } } } },
+          plugins: { legend: { display: false } } }
+      });
+    } catch (e) { console.error('gcv radar err', e); }
+  },
+
   renderSalesReports(box, s, list) {
     if (!s || s.report_count === 0) {
       box.innerHTML = `<div style="text-align:center;padding:18px;color:var(--text-tertiary);font-size:13px;">该艺人暂无代言战报数据（尚未纳入 AFF 战报监测）</div>`;
@@ -2603,8 +2779,8 @@ const App = {
         return;
       }
 
-      // 2. Call compare API
-      const data = await this.api(`/commercial/compare?ids=${artistIds.join(',')}`);
+      // 2. Call GCV v2 compare API
+      const data = await this.api(`/commercial/gcv-compare?ids=${artistIds.join(',')}`);
 
       // 3. Render comparison results
       this.renderCompareChart(data.results || data.compared_artists);
@@ -2616,85 +2792,120 @@ const App = {
   renderCompareChart(artists) {
     const resultArea = document.getElementById('compareResultArea');
     if (!resultArea || !artists || artists.length < 2) return;
+    // 旧结构（离线/无 gcv 字段）回退
+    if (artists[0].gcv == null) { this.renderCompareChartLegacy(artists); return; }
 
     const names = artists.map(a => a.artist_name || a.name);
     const colors = ['#2563EB', '#EC4899', '#F59E0B', '#10B981', '#8B5CF6', '#EF4444', '#06B6D4', '#84CC16'];
+    const dimKeys = ['conversion', 'fans_asset', 'traffic', 'image', 'work'];
+    const dimLabels = artists[0].dimensions ? dimKeys.map(k => artists[0].dimensions[k].label) : ['转化力','粉丝资产','流量','形象','作品力'];
 
-    // Render chart + table
+    const byValue = [...artists].sort((a, b) => b.brand_value - a.brand_value);
+    const byVmi = [...artists].sort((a, b) => (b.vmi || 0) - (a.vmi || 0));
+    const valueRank = byValue.map(a => a.artist_name).join(' > ');
+    const vmiRank = byVmi.map(a => a.artist_name + (a.vmi != null ? `(${a.vmi})` : '')).join(' > ');
+
     resultArea.innerHTML = `
-      <div style="margin-bottom:16px;">
-        <canvas id="compareBarChart" height="250"></canvas>
+      <div style="font-weight:700;font-size:14px;margin:6px 0 10px;color:var(--primary);">五维能力雷达对比（GCV 模型）</div>
+      <div style="max-width:460px;margin:0 auto 14px;"><canvas id="compareRadarChart" height="300"></canvas></div>
+
+      <div class="grid-2" style="margin-bottom:14px;">
+        <div class="card" style="background:var(--gray-50,#F9FAFB);">
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--primary);">① 品牌合作价值榜（绝对）</div>
+          <canvas id="compareValueBar" height="200"></canvas>
+        </div>
+        <div class="card" style="background:var(--gray-50,#F9FAFB);">
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--value-s,#059669);">② 性价比指数榜 VMI（花小钱办大事）</div>
+          <canvas id="compareVmiBar" height="200"></canvas>
+        </div>
       </div>
-      <div class="table-responsive"><table class="data-table" style="font-size:13px;">
-        <thead>
-          <tr>
-            <th>艺人</th><th>商业评分</th><th>热度</th><th>风险等级</th><th>报价</th><th>微博粉丝</th>
-          </tr>
-        </thead>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;font-size:12px;">
+        <div class="card" style="background:#eff6ff;padding:10px 12px;"><div style="color:var(--text-secondary);margin-bottom:4px;">价值排序</div><b>${valueRank}</b></div>
+        <div class="card" style="background:#ecfdf5;padding:10px 12px;"><div style="color:var(--text-secondary);margin-bottom:4px;">性价比排序</div><b>${vmiRank}</b></div>
+      </div>
+
+      <div class="table-responsive"><table class="data-table" style="font-size:12.5px;">
+        <thead><tr><td>艺人</td><td style="text-align:center;">GCV</td><td style="text-align:center;">置信度</td><td style="text-align:center;">RDF</td><td style="text-align:center;">合作价值</td><td style="text-align:center;">VMI</td><td style="text-align:center;">百分位</td></tr></thead>
         <tbody>
           ${artists.map((a, i) => `
             <tr>
               <td><strong>${a.artist_name || a.name}</strong></td>
-              <td style="color:${colors[i % colors.length]};font-weight:600;">${(a.total_score || 0).toFixed(1)}</td>
-              <td>${a.heat_level || '-'}</td>
-              <td>${a.risk_level || '-'}</td>
-              <td>${a.commercial_quote || '-'}</td>
-              <td>${a.weibo_fans || '-'}万</td>
-            </tr>
-          `).join('')}
+              <td style="text-align:center;font-weight:700;color:${colors[i % colors.length]};">${a.gcv}</td>
+              <td style="text-align:center;"><span style="color:${this.gcvConfColor(a.gcv_confidence)};font-weight:600;">${Math.round(a.gcv_confidence * 100)}%</span></td>
+              <td style="text-align:center;">${a.rdf}</td>
+              <td style="text-align:center;font-weight:600;">${a.brand_value}</td>
+              <td style="text-align:center;color:var(--value-s,#059669);font-weight:700;">${a.vmi != null ? a.vmi : '—'}</td>
+              <td style="text-align:center;">前${a.gcv_percentile}%</td>
+            </tr>`).join('')}
         </tbody>
       </table></div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">提示：GCV 五维中转化力来自 AFF 战报（自动），粉丝/形象/作品力为人工录入位，置信度低者建议以"价值榜"为辅、以"性价比榜"为主做初筛，关键决策前补齐数据。</div>
     `;
 
-    // Draw grouped bar chart
+    // 雷达
+    const rc = document.getElementById('compareRadarChart');
+    if (rc) {
+      if (this.state.compareRadar) { try { this.state.compareRadar.destroy(); } catch (e) {} }
+      const datasets = artists.map((a, i) => ({
+        label: a.artist_name || a.name,
+        data: dimKeys.map(k => a.dimensions[k] ? a.dimensions[k].score : 0),
+        backgroundColor: colors[i % colors.length] + '22',
+        borderColor: colors[i % colors.length],
+        borderWidth: 2, pointBackgroundColor: colors[i % colors.length], pointRadius: 2,
+      }));
+      this.state.compareRadar = new Chart(rc, {
+        type: 'radar',
+        data: { labels: dimLabels, datasets },
+        options: { responsive: true,
+          scales: { r: { beginAtZero: true, max: 100, ticks: { font: { size: 9 }, stepSize: 25 }, grid: { color: '#E5E7EB' }, angleLines: { color: '#E5E7EB' }, pointLabels: { font: { size: 11 } } } },
+          plugins: { legend: { position: 'top', labels: { usePointStyle: true, padding: 10, font: { size: 11 } } } } }
+      });
+    }
+    // 价值柱
+    const vc = document.getElementById('compareValueBar');
+    if (vc) {
+      if (this.state.compareValueChart) { try { this.state.compareValueChart.destroy(); } catch (e) {} }
+      this.state.compareValueChart = new Chart(vc, {
+        type: 'bar',
+        data: { labels: names, datasets: [{ label: '合作价值', data: artists.map(a => a.brand_value),
+          backgroundColor: colors.slice(0, names.length).map(c => c + 'CC'), borderColor: colors.slice(0, names.length), borderWidth: 2, borderRadius: 6 }] },
+        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: '#F3F4F6' } }, x: { ticks: { font: { size: 11, weight: '500' } } } }, plugins: { legend: { display: false } } } });
+    }
+    // VMI 柱
+    const mc = document.getElementById('compareVmiBar');
+    if (mc) {
+      if (this.state.compareVmiChart) { try { this.state.compareVmiChart.destroy(); } catch (e) {} }
+      this.state.compareVmiChart = new Chart(mc, {
+        type: 'bar',
+        data: { labels: names, datasets: [{ label: 'VMI', data: artists.map(a => a.vmi || 0),
+          backgroundColor: colors.slice(0, names.length).map(c => c + 'AA'), borderColor: colors.slice(0, names.length), borderWidth: 2, borderRadius: 6 }] },
+        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: '#F3F4F6' } }, x: { ticks: { font: { size: 11, weight: '500' } } } }, plugins: { legend: { display: false } } } });
+    }
+  },
+
+  renderCompareChartLegacy(artists) {
+    const resultArea = document.getElementById('compareResultArea');
+    if (!resultArea) return;
+    const names = artists.map(a => a.artist_name || a.name);
+    const colors = ['#2563EB', '#EC4899', '#F59E0B', '#10B981', '#8B5CF6', '#EF4444', '#06B6D4', '#84CC16'];
+    resultArea.innerHTML = `
+      <div class="table-responsive"><table class="data-table" style="font-size:13px;">
+        <thead><tr><th>艺人</th><th>商业评分</th><th>热度</th><th>风险等级</th><th>报价</th><th>微博粉丝</th></tr></thead>
+        <tbody>${artists.map((a, i) => `<tr>
+          <td><strong>${a.artist_name || a.name}</strong></td>
+          <td style="color:${colors[i % colors.length]};font-weight:600;">${(a.total_score || 0).toFixed(1)}</td>
+          <td>${a.heat_level || '-'}</td><td>${a.risk_level || '-'}</td>
+          <td>${a.commercial_quote || '-'}</td><td>${a.weibo_fans || '-'}万</td></tr>`).join('')}
+        </tbody></table></div>`;
     const canvas = document.getElementById('compareBarChart');
     if (!canvas) return;
-    try {
     if (this.state.compareChart) this.state.compareChart.destroy();
-
-    // Try to extract sub-scores if available
-    const heatScores = artists.map(a => this.heatToScore(a.heat_level));
-    const totalScores = artists.map(a => a.total_score || 0);
-
     this.state.compareChart = new Chart(canvas, {
       type: 'bar',
-      data: {
-        labels: names,
-        datasets: [
-          {
-            label: '商业价值评分',
-            data: totalScores,
-            backgroundColor: colors.slice(0, names.length).map(c => c + 'CC'),
-            borderColor: colors.slice(0, names.length),
-            borderWidth: 2,
-            borderRadius: 6,
-          },
-          {
-            label: '热度评分',
-            data: heatScores,
-            backgroundColor: colors.slice(0, names.length).map(c => c + '44'),
-            borderColor: colors.slice(0, names.length),
-            borderWidth: 1,
-            borderRadius: 6,
-            borderDash: [3, 3],
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          y: { beginAtZero: true, max: 100, ticks: { font: { size: 11 } }, grid: { color: '#F3F4F6' } },
-          x: { ticks: { font: { size: 12, weight: '500' } }, grid: { display: false } },
-        },
-        plugins: {
-          legend: { position: 'top', labels: { usePointStyle: true, padding: 12, font: { size: 12 } } },
-          tooltip: { mode: 'index', intersect: false },
-        }
-      }
-    });
-    } catch (e) {
-      console.error('Compare chart error:', e);
-    }
+      data: { labels: names, datasets: [{ label: '商业价值评分', data: artists.map(a => a.total_score || 0),
+        backgroundColor: colors.slice(0, names.length).map(c => c + 'CC'), borderColor: colors.slice(0, names.length), borderWidth: 2, borderRadius: 6 }] },
+      options: { responsive: true, scales: { y: { beginAtZero: true, max: 100, grid: { color: '#F3F4F6' } }, x: { ticks: { font: { size: 12 } } } }, plugins: { legend: { display: false } } } });
   },
 
   heatToScore(level) {
