@@ -591,6 +591,8 @@ const App = {
       const role = this.state.user.role || 'individual';
       const roleName = { individual: '个人', brand: '品牌方', mcn: 'MCN', agency: '代理', production: '制作', government: '政府/媒体', admin: '管理员' }[role] || '个人';
       const roleTag = role !== 'individual' ? `<span class="plan-tag" style="background:linear-gradient(135deg,#ECFDF5,#D1FAE5);color:#059669;">${roleName}</span>` : '';
+      const companyTag = (this.state.user.company && role !== 'individual')
+        ? `<span class="plan-tag" style="background:#F1F5F9;color:#334155;">${this.state.user.company}</span>` : '';
 
       // 注册来源（内测转化归因展示）
       const srcHtml = this.state.user.invited_by
@@ -626,6 +628,7 @@ const App = {
           <span>${masked}</span>
           <span class="plan-tag">${planName}</span>
           ${roleTag}
+          ${companyTag}
           ${roleActions}
           <button class="btn btn-ghost btn-sm" type="button" onclick="App.logout()">退出</button>
         </div>
@@ -3142,9 +3145,9 @@ const App = {
       const list = data.demands || [];
       if (!list.length) { box.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;">暂无品牌需求。飞轮启动中，鼓励品牌方来提交需求。</div>'; return; }
       box.innerHTML = list.map(r => `<div class="lead-item">
-        <div class="lead-head"><span class="lead-name">${r.industry || '通用'} ${r.tone ? '·' + r.tone : ''}</span><span style="font-size:11px;color:var(--text-tertiary);">${r.created_at ? r.created_at.slice(0, 10) : ''}</span></div>
+        <div class="lead-head"><span class="lead-name">${r.brand_company || r.industry || '某品牌'} <span style="font-size:11px;color:var(--text-tertiary);">${r.industry || ''} ${r.tone ? '·' + r.tone : ''}</span></span><span style="font-size:11px;color:var(--text-tertiary);">${r.created_at ? r.created_at.slice(0, 10) : ''}</span></div>
         <div class="lead-meta">预算 ${r.budget_range || '不限'} · 人群 ${r.audience_gender || '不限'} · 风险 ${r.risk_pref === 'exclude_high' ? '排除高' : '不限'} · 匹配 ${r.candidate_count} 位</div>
-        <div class="lead-contact">系统建议接洽：<b>${r.top_candidate_name || '—'}</b></div>
+        <div class="lead-contact">对接人：${r.brand_contact || '—'} · 系统建议接洽：<b>${r.top_candidate_name || '—'}</b></div>
       </div>`).join('');
     } catch (e) { box.innerHTML = '<div style="color:var(--risk-high);font-size:12px;">加载失败（需经纪/代理角色）：' + (e.message || e) + '</div>'; }
   },
