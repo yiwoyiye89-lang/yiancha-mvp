@@ -588,6 +588,9 @@ const App = {
       const phone = this.state.user.phone || '用户';
       const masked = phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
       const planName = this.state.user.plan_name || '免费版';
+      const role = this.state.user.role || 'individual';
+      const roleName = { individual: '个人', brand: '品牌方', mcn: 'MCN', agency: '代理', production: '制作', government: '政府/媒体', admin: '管理员' }[role] || '个人';
+      const roleTag = role !== 'individual' ? `<span class="plan-tag" style="background:linear-gradient(135deg,#ECFDF5,#D1FAE5);color:#059669;">${roleName}</span>` : '';
 
       // 注册来源（内测转化归因展示）
       const srcHtml = this.state.user.invited_by
@@ -610,10 +613,20 @@ const App = {
         inviteHtml = '';
       }
 
+      // B2B 角色快捷入口（飞轮第一步）
+      let roleActions = '';
+      if (role === 'brand') {
+        roleActions = `<button class="btn btn-ghost btn-xs" type="button" onclick="App.openBrandMatch();App.gotoMyRequirements()">我的需求</button>`;
+      } else if (['mcn', 'agency', 'production', 'government'].includes(role)) {
+        roleActions = `<button class="btn btn-ghost btn-xs" type="button" onclick="App.openBrandMatch();App.gotoDemandBoard()">需求看板</button>`;
+      }
+
       area.innerHTML = `
         <div class="user-area" title="已登录">
           <span>${masked}</span>
           <span class="plan-tag">${planName}</span>
+          ${roleTag}
+          ${roleActions}
           <button class="btn btn-ghost btn-sm" type="button" onclick="App.logout()">退出</button>
         </div>
         ${srcHtml}
@@ -710,23 +723,27 @@ const App = {
     const password = document.getElementById('regPassword').value;
     const password2 = document.getElementById('regPassword2').value;
     const inviteCode = document.getElementById('regInviteCode').value.trim();
-    
+    const role = document.getElementById('regRole').value;
+    const company = document.getElementById('regCompany').value.trim();
+    const nickname = document.getElementById('regNickname').value.trim();
+
     if (password !== password2) {
       this.showToast('两次密码不一致', 'error');
       return;
     }
-    if (!inviteCode) {
-      this.showToast('内测阶段需要邀请码才能注册', 'error');
+    // 仅个人用户强制邀请码；品牌/经纪/代理角色为飞轮获客，允许无码注册
+    if (role === 'individual' && !inviteCode) {
+      this.showToast('个人注册需要邀请码（品牌/经纪可留空）', 'error');
       return;
     }
-    
+
     try {
       const data = await this.api('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ phone, password, invite_code: inviteCode })
+        body: JSON.stringify({ phone, password, invite_code: inviteCode, role, company, nickname })
       });
       this.onLoginSuccess(data);
-      this.showToast('注册成功！', 'success');
+      this.showToast(data.message || '注册成功！', 'success');
     } catch (err) {
       this.showToast(`注册失败：${err.message}`, 'error');
     }
@@ -2352,14 +2369,25 @@ const App = {
             <button class="btn btn-primary" style="width:100%;margin-top:10px;font-size:13px;" onclick="App.runGcvMatch(${artistId})">测算该品牌匹配价值</button>
           </div>
           <div class="card" style="background:var(--gray-50,#F9FAFB);">
-            <div style="font-weight:700;font-size:14px;margin-bottom:8px;color:var(--value-s,#059669);">③ 风险评估 + ROI 建议（VMI）</div>
+            <div style="font-weight:700;font-size:14px;margin-bottom:8px;color:var(--value-s,#059669);">③ 风险评估 + 双维 ROI（品牌视角）</div>
             <div style="font-size:13px;line-height:1.9;">
               <div>风险折损 RDF：<b>${d.rdf}</b> <span style="color:var(--text-tertiary);font-size:12px;">(${d.rdf_detail.band})</span></div>
               <div>品牌合作价值：<b style="color:var(--value-s,#059669);font-size:16px;">${d.brand_value}</b></div>
-              <div>商务报价：<b>${d.quote_wan != null ? d.quote_wan + ' 万/年' : '未录入'}</b></div>
-              <div>性价比指数 VMI：<b style="color:var(--value-s,#059669);font-size:16px;">${d.vmi != null ? d.vmi : '—'}</b> <span style="color:var(--text-tertiary);font-size:12px;">${vmiTxt}</span></div>
+              <div>商务报价：<b>${d.quote_wan != null ? d.quote_wan + ' 万/年' : '未录入'}</b>　${d.signals_present ? '<span style="color:var(--risk-safe,#10B981);font-size:11px;">● 信号已补强</span>' : '<span style="color:var(--text-tertiary);font-size:11px;">○ 信号待补</span>'}</div>
             </div>
-            <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">VMI = 品牌合作价值 ÷ (代言费/100万)，越高越划算；可与同预算艺人横向比"性价比之王"。</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+              <div style="background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border-radius:10px;padding:10px;">
+                <div style="font-size:11px;color:var(--text-secondary);">综合ROI（整体回报指数）</div>
+                <div style="font-size:22px;font-weight:800;color:var(--primary);">${d.overall_roi != null ? d.overall_roi : '—'}</div>
+                <div style="font-size:10px;color:var(--text-tertiary);">品牌合作价值÷报价(百万)</div>
+              </div>
+              <div style="background:linear-gradient(135deg,#ECFDF5,#D1FAE5);border-radius:10px;padding:10px;">
+                <div style="font-size:11px;color:var(--text-secondary);">带货粗暴ROI（GMV÷报价）</div>
+                <div style="font-size:22px;font-weight:800;color:var(--value-s,#059669);">${d.sales_roi != null ? d.sales_roi + '×' : '—'}</div>
+                <div style="font-size:10px;color:var(--text-tertiary);">带货GMV(下限)${d.total_gmv_wan ? (' ' + (d.total_gmv_wan>=10000 ? (d.total_gmv_wan/10000).toFixed(1)+'亿' : Math.round(d.total_gmv_wan)+'万')) : ''}÷报价</div>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">综合ROI 衡量曝光+转化+资产+风险折损的整体回报；带货粗暴ROI=可量化带货GMV(下限)÷代言费，直接反映"投1元带回几元货"。两者口径不同，建议组合看。</div>
           </div>
         </div>
       </div>`;
@@ -2815,9 +2843,13 @@ const App = {
           <canvas id="compareValueBar" height="200"></canvas>
         </div>
         <div class="card" style="background:var(--gray-50,#F9FAFB);">
-          <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--value-s,#059669);">② 性价比指数榜 VMI（花小钱办大事）</div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--value-s,#059669);">② 综合ROI榜（整体回报指数）</div>
           <canvas id="compareVmiBar" height="200"></canvas>
         </div>
+      </div>
+      <div class="card" style="background:var(--gray-50,#F9FAFB);margin-bottom:14px;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--value-s,#059669);">③ 带货粗暴ROI榜（GMV÷报价，带货力直接体现）</div>
+        <canvas id="compareSalesRoiBar" height="200"></canvas>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;font-size:12px;">
@@ -2826,16 +2858,17 @@ const App = {
       </div>
 
       <div class="table-responsive"><table class="data-table" style="font-size:12.5px;">
-        <thead><tr><td>艺人</td><td style="text-align:center;">GCV</td><td style="text-align:center;">置信度</td><td style="text-align:center;">RDF</td><td style="text-align:center;">合作价值</td><td style="text-align:center;">VMI</td><td style="text-align:center;">百分位</td></tr></thead>
+        <thead><tr><td>艺人</td><td style="text-align:center;">GCV</td><td style="text-align:center;">置信度</td><td style="text-align:center;">RDF</td><td style="text-align:center;">合作价值</td><td style="text-align:center;">综合ROI</td><td style="text-align:center;">带货ROI</td><td style="text-align:center;">百分位</td></tr></thead>
         <tbody>
           ${artists.map((a, i) => `
             <tr>
-              <td><strong>${a.artist_name || a.name}</strong></td>
+              <td><strong>${a.artist_name || a.name}</strong>${a.signals_present ? ' <span style="color:var(--risk-safe,#10B981);font-size:10px;">●</span>' : ''}</td>
               <td style="text-align:center;font-weight:700;color:${colors[i % colors.length]};">${a.gcv}</td>
               <td style="text-align:center;"><span style="color:${this.gcvConfColor(a.gcv_confidence)};font-weight:600;">${Math.round(a.gcv_confidence * 100)}%</span></td>
               <td style="text-align:center;">${a.rdf}</td>
               <td style="text-align:center;font-weight:600;">${a.brand_value}</td>
-              <td style="text-align:center;color:var(--value-s,#059669);font-weight:700;">${a.vmi != null ? a.vmi : '—'}</td>
+              <td style="text-align:center;color:var(--primary);font-weight:700;">${a.overall_roi != null ? a.overall_roi : '—'}</td>
+              <td style="text-align:center;color:var(--value-s,#059669);font-weight:700;">${a.sales_roi != null ? a.sales_roi + '×' : '—'}</td>
               <td style="text-align:center;">前${a.gcv_percentile}%</td>
             </tr>`).join('')}
         </tbody>
@@ -2872,14 +2905,24 @@ const App = {
           backgroundColor: colors.slice(0, names.length).map(c => c + 'CC'), borderColor: colors.slice(0, names.length), borderWidth: 2, borderRadius: 6 }] },
         options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: '#F3F4F6' } }, x: { ticks: { font: { size: 11, weight: '500' } } } }, plugins: { legend: { display: false } } } });
     }
-    // VMI 柱
+    // 综合ROI 柱
     const mc = document.getElementById('compareVmiBar');
     if (mc) {
       if (this.state.compareVmiChart) { try { this.state.compareVmiChart.destroy(); } catch (e) {} }
       this.state.compareVmiChart = new Chart(mc, {
         type: 'bar',
-        data: { labels: names, datasets: [{ label: 'VMI', data: artists.map(a => a.vmi || 0),
+        data: { labels: names, datasets: [{ label: '综合ROI', data: artists.map(a => a.overall_roi || 0),
           backgroundColor: colors.slice(0, names.length).map(c => c + 'AA'), borderColor: colors.slice(0, names.length), borderWidth: 2, borderRadius: 6 }] },
+        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: '#F3F4F6' } }, x: { ticks: { font: { size: 11, weight: '500' } } } }, plugins: { legend: { display: false } } } });
+    }
+    // 带货粗暴ROI 柱
+    const sc = document.getElementById('compareSalesRoiBar');
+    if (sc) {
+      if (this.state.compareSalesRoiChart) { try { this.state.compareSalesRoiChart.destroy(); } catch (e) {} }
+      this.state.compareSalesRoiChart = new Chart(sc, {
+        type: 'bar',
+        data: { labels: names, datasets: [{ label: '带货ROI(倍)', data: artists.map(a => a.sales_roi || 0),
+          backgroundColor: colors.slice(0, names.length).map(c => c + '88'), borderColor: colors.slice(0, names.length), borderWidth: 2, borderRadius: 6 }] },
         options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: '#F3F4F6' } }, x: { ticks: { font: { size: 11, weight: '500' } } } }, plugins: { legend: { display: false } } } });
     }
   },
@@ -2991,6 +3034,122 @@ const App = {
       </div>
     `;
   },
+
+  // ---- 品牌找艺人（前台化匹配 + 飞轮需求）----
+  openBrandMatch() {
+    document.getElementById('brandMatchModal').classList.add('show');
+    const role = (this.state.user && this.state.user.role) || 'individual';
+    const showMy = role === 'brand';
+    const showBoard = ['mcn', 'agency', 'production', 'government'].includes(role);
+    const myTab = document.getElementById('bmTabMy');
+    const boardTab = document.getElementById('bmTabBoard');
+    if (myTab) myTab.style.display = showMy ? '' : 'none';
+    if (boardTab) boardTab.style.display = showBoard ? '' : 'none';
+    this.switchBrandTab('find');
+  },
+  closeBrandMatch() { const m = document.getElementById('brandMatchModal'); if (m) m.classList.remove('show'); },
+  switchBrandTab(tab) {
+    ['find', 'my', 'board'].forEach(t => {
+      const el = document.getElementById('bmTab' + t.charAt(0).toUpperCase() + t.slice(1));
+      if (el) el.classList.toggle('active', t === tab);
+    });
+    const f = document.getElementById('bmFindPanel'); if (f) f.style.display = tab === 'find' ? '' : 'none';
+    const my = document.getElementById('bmMyPanel'); if (my) my.style.display = tab === 'my' ? '' : 'none';
+    const b = document.getElementById('bmBoardPanel'); if (b) b.style.display = tab === 'board' ? '' : 'none';
+    if (tab === 'my') this.loadMyRequirements();
+    if (tab === 'board') this.loadDemandBoard();
+  },
+  async runBrandMatch() {
+    const industry = document.getElementById('bmIndustry').value;
+    const budget_range = document.getElementById('bmBudget').value;
+    const audience_gender = document.getElementById('bmGender').value;
+    const tone = document.getElementById('bmTone').value;
+    const scenario = document.getElementById('bmScenario').value;
+    const risk_pref = document.getElementById('bmRisk').value;
+    const target_audience = (document.getElementById('bmAudience').value || '').trim();
+    if (!industry) { this.showToast('请先选择行业/品类', 'warning'); return; }
+    const box = document.getElementById('bmResult');
+    box.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner"></div><div style="margin-top:10px;color:var(--text-tertiary);font-size:13px;">正在为你匹配候选艺人...</div></div>';
+    const saveHint = document.getElementById('bmSaveHint');
+    if (saveHint) saveHint.innerHTML = '';
+    try {
+      const data = await this.api('/commercial/brand-match', {
+        method: 'POST',
+        body: JSON.stringify({ industry, budget_range, audience_gender, tone, scenario, risk_pref, target_audience, limit: 12 })
+      });
+      this.renderBrandMatchResult(data);
+      const role = this.state.user && this.state.user.role;
+      if (this.state.token && ['brand', 'mcn', 'agency', 'production', 'government'].includes(role)) {
+        if (saveHint) saveHint.innerHTML = '✅ 需求已沉淀（' + (this.state.user.plan_name || '') + '），可在「' + (role === 'brand' ? '我的需求' : '需求看板') + '」查看。';
+      } else if (!this.state.token) {
+        if (saveHint) saveHint.innerHTML = '提示：<a style="color:var(--primary);cursor:pointer;" onclick="App.openAuth()">登录品牌/经纪账号</a> 可自动保存需求并解锁接单。';
+      }
+    } catch (err) {
+      box.innerHTML = '<div style="text-align:center;padding:20px;color:var(--risk-high);">匹配失败：' + (err.message || err) + '</div>';
+    }
+  },
+  renderBrandMatchResult(data) {
+    const box = document.getElementById('bmResult');
+    if (!box) return;
+    const recs = data.recommendations || [];
+    if (!recs.length) { box.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary);">暂无匹配艺人，试试放宽行业/预算。</div>'; return; }
+    const rows = recs.map((r, i) => {
+      const gcv = r.gcv != null ? r.gcv : '-';
+      const conf = r.gcv_confidence != null ? Math.round(r.gcv_confidence * 100) + '%' : '-';
+      const val = r.brand_value != null ? r.brand_value : '-';
+      const oroi = r.overall_roi != null ? r.overall_roi : '—';
+      const sroi = r.sales_roi != null ? r.sales_roi + '×' : '—';
+      const gmv = r.total_gmv_wan ? (r.total_gmv_wan >= 10000 ? (r.total_gmv_wan / 10000).toFixed(1) + '亿' : Math.round(r.total_gmv_wan) + '万') : '—';
+      const signal = r.signals_present ? '<span style="color:var(--risk-safe,#10B981);font-size:11px;">●信号</span>' : '';
+      return `<div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border-light);border-radius:12px;margin-bottom:10px;cursor:pointer;" onclick="App.navigate('artist/${r.artist_id}')">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--accent-purple));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">${i + 1}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:15px;">${r.artist_name} ${signal}</div>
+          <div style="font-size:12px;color:var(--text-tertiary);margin-top:3px;line-height:1.5;">${r.match_reason || ''}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:18px;font-weight:800;color:var(--primary);">${gcv}</div>
+          <div style="font-size:10px;color:var(--text-tertiary);">GCV·置信${conf}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;min-width:104px;">
+          <div style="font-size:13px;color:var(--value-s,#059669);font-weight:700;">带货ROI ${sroi}</div>
+          <div style="font-size:10px;color:var(--text-tertiary);">综合ROI ${oroi}·价值${val}</div>
+          <div style="font-size:10px;color:var(--text-tertiary);">带货GMV ${gmv}</div>
+        </div>
+      </div>`;
+    }).join('');
+    box.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">匹配出 <b>${data.total_candidates}</b> 位候选（按品牌合作价值排序）${data.budget_range ? (' · 预算' + data.budget_range) : ''}${data.audience_gender && data.audience_gender !== '不限' ? (' · ' + data.audience_gender) : ''}</div>` + rows;
+  },
+  async loadMyRequirements() {
+    const box = document.getElementById('bmMyList'); if (!box) return;
+    box.innerHTML = '<div style="text-align:center;padding:14px;"><div class="spinner"></div></div>';
+    try {
+      const data = await this.api('/commercial/my-requirements');
+      const list = data.requirements || [];
+      if (!list.length) { box.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;">暂无已保存的需求。去「填需求找艺人」提交一条吧。</div>'; return; }
+      box.innerHTML = list.map(r => `<div class="lead-item">
+        <div class="lead-head"><span class="lead-name">${r.industry || '通用'} ${r.tone ? '·' + r.tone : ''}</span><span style="font-size:11px;color:var(--text-tertiary);">${r.created_at ? r.created_at.slice(0, 10) : ''}</span></div>
+        <div class="lead-meta">预算 ${r.budget_range || '不限'} · 人群 ${r.audience_gender || '不限'} · 匹配 ${r.candidate_count} 位</div>
+        <div class="lead-contact">系统Top1：<b>${r.top_candidate_name || '—'}</b></div>
+      </div>`).join('');
+    } catch (e) { box.innerHTML = '<div style="color:var(--risk-high);font-size:12px;">加载失败：' + (e.message || e) + '</div>'; }
+  },
+  async loadDemandBoard() {
+    const box = document.getElementById('bmBoardList'); if (!box) return;
+    box.innerHTML = '<div style="text-align:center;padding:14px;"><div class="spinner"></div></div>';
+    try {
+      const data = await this.api('/commercial/demand-board');
+      const list = data.demands || [];
+      if (!list.length) { box.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;">暂无品牌需求。飞轮启动中，鼓励品牌方来提交需求。</div>'; return; }
+      box.innerHTML = list.map(r => `<div class="lead-item">
+        <div class="lead-head"><span class="lead-name">${r.industry || '通用'} ${r.tone ? '·' + r.tone : ''}</span><span style="font-size:11px;color:var(--text-tertiary);">${r.created_at ? r.created_at.slice(0, 10) : ''}</span></div>
+        <div class="lead-meta">预算 ${r.budget_range || '不限'} · 人群 ${r.audience_gender || '不限'} · 风险 ${r.risk_pref === 'exclude_high' ? '排除高' : '不限'} · 匹配 ${r.candidate_count} 位</div>
+        <div class="lead-contact">系统建议接洽：<b>${r.top_candidate_name || '—'}</b></div>
+      </div>`).join('');
+    } catch (e) { box.innerHTML = '<div style="color:var(--risk-high);font-size:12px;">加载失败（需经纪/代理角色）：' + (e.message || e) + '</div>'; }
+  },
+  gotoMyRequirements() { this.openBrandMatch(); this.switchBrandTab('my'); },
+  gotoDemandBoard() { this.openBrandMatch(); this.switchBrandTab('board'); },
 
   // ---- Risk Report Download ----
   async downloadRiskReport(artistId, artistName) {
