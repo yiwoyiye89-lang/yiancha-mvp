@@ -3,7 +3,7 @@
    ============================================ */
 
 // === 当前前端版本号（Task #3: 与 version.json 比对，发现新版本弹刷新提示） ===
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.9.0';
 
 // === 内置10人示例数据（离线兜底，API不可用时即时体验） ===
 const OFFLINE_DEMO_DATA = [
@@ -594,6 +594,13 @@ const App = {
       const companyTag = (this.state.user.company && role !== 'individual')
         ? `<span class="plan-tag" style="background:#F1F5F9;color:#334155;">${this.state.user.company}</span>` : '';
 
+      // P0-3 实名/认证徽章
+      const isVerified = !!this.state.user.verified;
+      const verifyType = this.state.user.verify_type || 'unverified';
+      const verifyLabelMap = { phone: '手机实名', company: '企业认证', artist_official: '艺人官方认证', unverified: '未认证' };
+      const verifyLabel = verifyLabelMap[verifyType] || '未认证';
+      const verifyBadge = `<span class="plan-tag" style="background:${isVerified ? 'linear-gradient(135deg,#ECFDF5,#D1FAE5)' : '#FEF2F2'};color:${isVerified ? '#059669' : '#DC2626'};">${isVerified ? '✓ ' : '○ '}${verifyLabel}</span>`;
+
       // 注册来源（内测转化归因展示）
       const srcHtml = this.state.user.invited_by
         ? `<div class="invite-src">通过邀请码 <b>${this.state.user.invited_by}</b> 注册</div>`
@@ -622,6 +629,11 @@ const App = {
       } else if (['mcn', 'agency', 'production', 'government'].includes(role)) {
         roleActions = `<button class="btn btn-ghost btn-xs" type="button" onclick="App.openBrandMatch();App.gotoDemandBoard()">需求看板</button>`;
       }
+      // P0-2/3/4 通用入口
+      const moreActions = `
+        <button class="btn btn-ghost btn-xs" type="button" onclick="App.openPricing()">双盲定价</button>
+        <button class="btn btn-ghost btn-xs" type="button" onclick="App.openIntake()">艺人入驻</button>
+        <button class="btn btn-ghost btn-xs" type="button" onclick="App.openVerify()">${isVerified ? '认证升级' : '申请认证'}</button>`;
 
       area.innerHTML = `
         <div class="user-area" title="已登录">
@@ -629,7 +641,9 @@ const App = {
           <span class="plan-tag">${planName}</span>
           ${roleTag}
           ${companyTag}
+          ${verifyBadge}
           ${roleActions}
+          ${moreActions}
           <button class="btn btn-ghost btn-sm" type="button" onclick="App.logout()">退出</button>
         </div>
         ${srcHtml}
@@ -839,6 +853,147 @@ const App = {
   // ---- 商务合作 / 申请开通（P2 内测转化入口）----
   openBusinessModal() { document.getElementById('businessModal').classList.add('show'); },
   closeBusinessModal() { document.getElementById('businessModal').classList.remove('show'); },
+
+  // ---- P0-2 双盲定价 ----
+  onPricingSideChange() {
+    const side = document.getElementById('pzSide').value;
+    const b = document.getElementById('pzBrandRow'); const a = document.getElementById('pzArtistRow');
+    if (b) b.style.display = side === 'brand' ? '' : 'none';
+    if (a) a.style.display = side === 'artist' ? '' : 'none';
+  },
+  openPricing() {
+    if (!this.state.token) { this.openAuth(); this.showToast('请先登录后再使用双盲定价', 'info'); return; }
+    const role = (this.state.user && this.state.user.role) || 'individual';
+    document.getElementById('pricingModal').classList.add('show');
+    const sideSel = document.getElementById('pzSide');
+    if (sideSel) { sideSel.value = (role === 'brand') ? 'brand' : 'artist'; this.onPricingSideChange(); }
+    this.loadPricingMatches();
+  },
+  closePricing() { const m = document.getElementById('pricingModal'); if (m) m.classList.remove('show'); },
+  async submitPricing() {
+    const side = document.getElementById('pzSide').value;
+    const category = (document.getElementById('pzCategory').value || '').trim();
+    const scenario = document.getElementById('pzScenario').value;
+    const note = (document.getElementById('pzNote').value || '').trim();
+    const payload = { side, category: category || null, scenario, note: note || null };
+    if (side === 'brand') {
+      const bmin = parseFloat(document.getElementById('pzBudgetMin').value);
+      const bmax = parseFloat(document.getElementById('pzBudgetMax').value);
+      if (isNaN(bmin) || isNaN(bmax) || bmin > bmax) { this.showToast('请填写有效的预算区间（下限≤上限）', 'warning'); return; }
+      payload.budget_min_wan = bmin; payload.budget_max_wan = bmax;
+    } else {
+      const qmin = parseFloat(document.getElementById('pzQuoteMin').value);
+      const qmax = parseFloat(document.getElementById('pzQuoteMax').value);
+      if (isNaN(qmin) || isNaN(qmax) || qmin > qmax) { this.showToast('请填写有效的报价区间（下限≤上限）', 'warning'); return; }
+      payload.quote_min_wan = qmin; payload.quote_max_wan = qmax;
+      payload.artist_name_hint = (document.getElementById('pzArtistHint').value || '').trim() || null;
+    }
+    const box = document.getElementById('pzSubmitMsg');
+    if (box) box.innerHTML = '<span style="color:var(--text-tertiary);font-size:12px;">提交中...</span>';
+    try {
+      const data = await this.api('/pricing/request', { method: 'POST', body: JSON.stringify(payload) });
+      this.showToast(data.message || '已提交', 'success');
+      if (box) box.innerHTML = '<span style="color:var(--risk-safe);font-size:12px;">✓ ' + (data.message || '已提交') + '</span>';
+      this.loadPricingMatches();
+    } catch (err) {
+      if (box) box.innerHTML = '<span style="color:var(--risk-high);font-size:12px;">失败：' + (err.message || err) + '</span>';
+    }
+  },
+  async loadPricingMatches() {
+    const box = document.getElementById('pzMatches'); if (!box) return;
+    box.innerHTML = '<div style="text-align:center;padding:16px;"><div class="spinner"></div></div>';
+    try {
+      const data = await this.api('/pricing/matches');
+      this.renderPricingMatches(data);
+    } catch (e) {
+      box.innerHTML = '<div style="color:var(--risk-high);font-size:12px;">加载匹配失败：' + (e.message || e) + '</div>';
+    }
+  },
+  renderPricingMatches(data) {
+    const box = document.getElementById('pzMatches'); if (!box) return;
+    const total = data.total || 0;
+    const side = data.side || '';
+    if (!total) {
+      box.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;">暂无契合的' + (side === 'brand' ? '艺人' : '品牌') + '。提交你的区间后，系统会双向盲匹配。</div>';
+      return;
+    }
+    const rows = (data.matches || []).map((m, i) => {
+      let detail;
+      if (side === 'brand') {
+        detail = `<div style="font-size:12px;color:var(--text-tertiary);margin-top:3px;">品类 ${(m.category || '通用')} · 场景 ${(m.scenario || '')}<br>双盲：艺人报价区间已隐藏，仅展示契合度</div>`;
+      } else {
+        detail = `<div style="font-size:12px;color:var(--text-tertiary);margin-top:3px;">行业 ${m.brand_industry || '通用'} · 预算 ${m.budget_range || '-'} · 场景 ${(m.scenario || '')}<br>双盲：品牌身份与联系已隐藏</div>`;
+      }
+      const nameHtml = side === 'brand' ? (m.artist_name || '匿名艺人') : '匿名品牌';
+      const tags = (m.heat_level ? '<span class="tag" style="font-size:11px;padding:1px 6px;background:#EEF2F7;color:#475569;">' + m.heat_level + '</span>' : '') + (m.risk_level ? '<span class="tag" style="font-size:11px;padding:1px 6px;background:#FEF3C7;color:#92400E;">' + m.risk_level + '</span>' : '');
+      return `<div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border-light);border-radius:12px;margin-bottom:10px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--accent-purple));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">${i + 1}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:15px;">${nameHtml} ${tags}</div>
+          ${detail}
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:18px;font-weight:800;color:var(--primary);">${m.match_pct}%</div>
+          <div style="font-size:10px;color:var(--text-tertiary);">区间契合度</div>
+        </div>
+      </div>`;
+    }).join('');
+    box.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">为你双向盲匹配到 <b>${total}</b> 个契合对象（区间重叠度越高越契合）</div>` + rows;
+  },
+
+  // ---- P0-3 申请认证 / 升级 ----
+  openVerify() {
+    if (!this.state.token) { this.openAuth(); this.showToast('请先登录后再认证', 'info'); return; }
+    document.getElementById('verifyModal').classList.add('show');
+  },
+  closeVerify() { const m = document.getElementById('verifyModal'); if (m) m.classList.remove('show'); },
+  async submitVerify() {
+    const verify_type = document.getElementById('vyType').value;
+    const company = (document.getElementById('vyCompany').value || '').trim();
+    const company_credit_no = (document.getElementById('vyCredit').value || '').trim();
+    const real_name = (document.getElementById('vyRealName').value || '').trim();
+    const id_card = (document.getElementById('vyIdCard').value || '').trim();
+    const box = document.getElementById('vyMsg'); if (box) box.innerHTML = '<span style="color:var(--text-tertiary);font-size:12px;">提交中...</span>';
+    try {
+      const data = await this.api('/auth/verify', { method: 'POST', body: JSON.stringify({ verify_type, company: company || null, company_credit_no: company_credit_no || null, real_name: real_name || null, id_card: id_card || null }) });
+      this.showToast('认证已提交', 'success');
+      if (box) box.innerHTML = '<span style="color:var(--risk-safe);font-size:12px;">✓ ' + (data.verify_label || '已通过') + '</span>';
+      this.state.user = Object.assign({}, this.state.user, { verified: true, verify_type: data.verify_type, role_label: data.verify_label });
+      if (this.state.token) localStorage.setItem('yc_user', JSON.stringify(this.state.user));
+      this.renderUserArea();
+    } catch (err) {
+      if (box) box.innerHTML = '<span style="color:var(--risk-high);font-size:12px;">失败：' + (err.message || err) + '</span>';
+    }
+  },
+
+  // ---- P0-4 艺人自助入驻（小艺人 seeding）----
+  openIntake() { document.getElementById('intakeModal').classList.add('show'); },
+  closeIntake() { const m = document.getElementById('intakeModal'); if (m) m.classList.remove('show'); },
+  async submitIntake(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const payload = {
+      name: (document.getElementById('itName').value || '').trim(),
+      gender: (document.getElementById('itGender').value || '').trim() || null,
+      age: (document.getElementById('itAge').value || '').trim() || null,
+      agency: (document.getElementById('itAgency').value || '').trim() || null,
+      category: (document.getElementById('itCategory').value || '').trim() || null,
+      social_links: (document.getElementById('itSocial').value || '').trim() || null,
+      weibo_fans: (document.getElementById('itWeibo').value || '').trim() || null,
+      douyin_fans: (document.getElementById('itDouyin').value || '').trim() || null,
+      persona_tags: (document.getElementById('itPersona').value || '').trim() || null,
+      contact: (document.getElementById('itContact').value || '').trim() || null,
+    };
+    if (!payload.name) { this.showToast('请填写艺人名称', 'warning'); return; }
+    const box = document.getElementById('itMsg'); if (box) box.innerHTML = '<span style="color:var(--text-tertiary);font-size:12px;">提交中...</span>';
+    try {
+      const data = await this.api('/artists/intake', { method: 'POST', body: JSON.stringify(payload) });
+      this.showToast('入驻申请已提交，等待运营审核', 'success');
+      if (box) box.innerHTML = '<span style="color:var(--risk-safe);font-size:12px;">✓ 已提交，状态：审核中（pending_review）</span>';
+      const f = document.getElementById('intakeForm'); if (f) f.reset();
+    } catch (err) {
+      if (box) box.innerHTML = '<span style="color:var(--risk-high);font-size:12px;">失败：' + (err.message || err) + '</span>';
+    }
+  },
 
   async submitBusiness(e) {
     e.preventDefault();
@@ -1529,6 +1684,7 @@ const App = {
           <div class="detail-tab-item" onclick="App.switchTab('fans')">粉丝数据</div>
           <div class="detail-tab-item" onclick="App.switchTab('endorse')">品牌代言</div>
           <div class="detail-tab-item" onclick="App.switchTab('insight')">深度洞察</div>
+          <div class="detail-tab-item" onclick="App.switchTab('compliance')">合规体检</div>
           <div class="detail-tab-item" onclick="App.switchTab('events')">风险事件</div>
         </div>
       </div>
@@ -1800,6 +1956,13 @@ const App = {
           <div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载风险事件...</span></div>
         </div>
 
+        <!-- Compliance Tab -->
+        <div class="tab-content" id="tab-compliance">
+          <div id="complianceBox">
+            <div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载合规体检...</span></div>
+          </div>
+        </div>
+
         <!-- Endorse Tab -->
         <div class="tab-content" id="tab-endorse">
           <div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载品牌代言...</span></div>
@@ -1844,6 +2007,69 @@ const App = {
           <button class="btn btn-primary mt-6" onclick="App.navigate('home')">返回首页</button>
         </div>`;
     }
+  },
+
+  // ---- P0-1 代言合规体检 ----
+  async loadCompliance(artistId) {
+    const box = document.getElementById('complianceBox');
+    if (!box) return;
+    box.innerHTML = '<div style="text-align:center;padding:24px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载合规体检...</span></div>';
+    try {
+      const d = await this.api('/commercial/compliance/' + artistId);
+      box.innerHTML = this.renderCompliance(d);
+    } catch (err) {
+      box.innerHTML = '<div style="text-align:center;padding:20px;color:var(--risk-high);">合规体检加载失败：' + (err.message || err) + '</div>';
+    }
+  },
+  renderCompliance(d) {
+    if (!d) return '';
+    const score = d.compliance_score != null ? d.compliance_score : '-';
+    const level = d.compliance_level || '-';
+    const levelColor = level === '优' ? 'var(--risk-safe)' : level === '良' ? '#059669' : level === '中' ? '#F59E0B' : 'var(--risk-high)';
+    const prohibited = (d.prohibited_categories || []);
+    const recommended = (d.recommended_categories || []);
+    const flags = (d.flags || []);
+    const scoreColor = score >= 90 ? 'var(--risk-safe)' : score >= 75 ? '#059669' : score >= 60 ? '#F59E0B' : 'var(--risk-high)';
+    let flagsHtml = flags.map(f => {
+      const c = f.level === 'danger' ? 'var(--risk-high)' : f.level === 'warning' ? '#F59E0B' : f.level === 'ok' ? 'var(--risk-safe)' : 'var(--primary)';
+      return '<div style="display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:8px 10px;border-radius:8px;background:' + (f.level === 'ok' ? '#ECFDF5' : '#FFF7ED') + ';margin-bottom:8px;line-height:1.5;"><span style="color:' + c + ';font-weight:700;">●</span><span>' + this.escHtml(f.text) + '</span></div>';
+    }).join('');
+    const prohibitedHtml = prohibited.length ? prohibited.map(p => '<span class="tag" style="background:#FEE2E2;color:#B91C1C;font-size:12px;padding:3px 10px;margin:3px 4px 3px 0;display:inline-block;">🚫 ' + this.escHtml(p) + '</span>').join('') : '<span class="text-sm text-tertiary">无负面清单命中</span>';
+    const recHtml = recommended.length ? recommended.map(c => '<span class="tag" style="background:#ECFDF5;color:#047857;font-size:12px;padding:3px 10px;margin:3px 4px 3px 0;display:inline-block;">✓ ' + this.escHtml(c) + '</span>').join('') : '<span class="text-sm text-tertiary">—</span>';
+    return `
+      <div class="card mb-6">
+        <div class="card-header">代言合规体检 <span class="text-xs text-tertiary">· 基于《广告法》与七部门指导意见</span></div>
+        <div class="card-body">
+          <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+            <div style="text-align:center;">
+              <div style="font-size:40px;font-weight:800;color:${scoreColor};">${score}</div>
+              <div style="font-size:13px;color:var(--text-secondary);">合规评分</div>
+            </div>
+            <div style="text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:${levelColor};">${level}</div>
+              <div style="font-size:13px;color:var(--text-secondary);">合规等级</div>
+            </div>
+            <div style="flex:1;min-width:220px;font-size:13px;color:var(--text-secondary);line-height:1.7;">
+              <div><b>持续使用信号：</b>${this.escHtml(d.usage_signal || '—')}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card mb-6">
+          <div class="card-header">禁代 / 限代品类</div>
+          <div class="card-body">${prohibitedHtml}</div>
+        </div>
+        <div class="card mb-6">
+          <div class="card-header">推荐安全品类</div>
+          <div class="card-body">${recHtml}</div>
+        </div>
+      </div>
+      <div class="card mb-6">
+        <div class="card-header">风险信号与提示</div>
+        <div class="card-body">${flagsHtml}</div>
+      </div>
+      <div class="text-xs text-tertiary" style="line-height:1.7;padding:0 4px;">${this.escHtml(d.disclaimer || '')}</div>`;
   },
 
   // ---- P4/P5-A 风险评分可解释性 ----
@@ -1969,6 +2195,10 @@ const App = {
     // 商业价值 tab：懒加载真实商业价值评分（接 /commercial/score，401/402 由 api() 统一拦截）
     if (tabId === 'commercial' && this.state.currentArtistId) {
       this.loadCommercialScore(this.state.currentArtistId);
+    }
+    // P0-1 合规体检 tab：懒加载
+    if (tabId === 'compliance' && this.state.currentArtistId) {
+      this.loadCompliance(this.state.currentArtistId);
     }
   },
 
