@@ -1991,6 +1991,184 @@ canvas { max-width: 100%; }
   </div>
 </div>
 
+<!-- P0-2 双盲定价 Modal -->
+<div class="modal-overlay" id="pricingModal" onclick="App.closePricing()">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>🔒 双盲定价</h3>
+      <button class="modal-close" onclick="App.closePricing()">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-secondary">品牌报预算区间、艺人报报价区间，平台只算「区间契合度」，<b>互不暴露精确数字</b>。提交后系统为你双向盲匹配契合的对方。</p>
+      <form id="pricingForm" onsubmit="event.preventDefault();App.submitPricing();">
+        <div class="form-row">
+          <div class="form-group">
+            <label>我是</label>
+            <select class="form-input" id="pzSide" onchange="App.onPricingSideChange()">
+              <option value="brand">品牌方（报预算）</option>
+              <option value="artist">艺人 / 经纪（报价）</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>行业 / 品类 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+            <input class="form-input" type="text" id="pzCategory" placeholder="如：美妆 / 食品">
+          </div>
+        </div>
+        <div class="form-row" id="pzBrandRow">
+          <div class="form-group">
+            <label>预算下限（万/年）</label>
+            <input class="form-input" type="number" id="pzBudgetMin" placeholder="如：300">
+          </div>
+          <div class="form-group">
+            <label>预算上限（万/年）</label>
+            <input class="form-input" type="number" id="pzBudgetMax" placeholder="如：800">
+          </div>
+        </div>
+        <div class="form-row" id="pzArtistRow" style="display:none;">
+          <div class="form-group">
+            <label>报价下限（万/年）</label>
+            <input class="form-input" type="number" id="pzQuoteMin" placeholder="如：200">
+          </div>
+          <div class="form-group">
+            <label>报价上限（万/年）</label>
+            <input class="form-input" type="number" id="pzQuoteMax" placeholder="如：600">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>艺人名 <span style="color:var(--text-tertiary);font-weight:400;">(选填，艺人侧)</span></label>
+            <input class="form-input" type="text" id="pzArtistHint" placeholder="未录入也可提交">
+          </div>
+          <div class="form-group">
+            <label>合作场景</label>
+            <select class="form-input" id="pzScenario">
+              <option value="ambassador">品牌代言</option>
+              <option value="ecommerce">电商带货</option>
+              <option value="brand">品牌曝光</option>
+              <option value="event">活动出席</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>补充说明 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <textarea class="form-input" id="pzNote" rows="2" placeholder="如：希望短代/长代、地域偏好"></textarea>
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit">提交并盲匹配</button>
+        <div id="pzSubmitMsg" style="margin-top:8px;"></div>
+      </form>
+      <div class="mt-6">
+        <div class="card-header" style="padding-left:0;">我的盲匹配结果</div>
+        <div id="pzMatches" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- P0-3 申请认证 Modal -->
+<div class="modal-overlay" id="verifyModal" onclick="App.closeVerify()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>✅ 实名 / 认证</h3>
+      <button class="modal-close" onclick="App.closeVerify()">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-secondary">完成认证可提升可信度与社区权重。MVP 阶段自动通过，正式版将接入工商 / 人脸识别核验。</p>
+      <form id="verifyForm" onsubmit="event.preventDefault();App.submitVerify();">
+        <div class="form-group">
+          <label>认证类型</label>
+          <select class="form-input" id="vyType">
+            <option value="company">企业认证（品牌/经纪/代理）</option>
+            <option value="artist_official">艺人官方认证</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>公司 / 机构名称 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <input class="form-input" type="text" id="vyCompany" placeholder="如：某某经纪公司">
+        </div>
+        <div class="form-group">
+          <label>统一社会信用代码 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <input class="form-input" type="text" id="vyCredit" placeholder="企业认证用">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>真实姓名 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+            <input class="form-input" type="text" id="vyRealName" placeholder="艺人官方认证用">
+          </div>
+          <div class="form-group">
+            <label>身份证号 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+            <input class="form-input" type="text" id="vyIdCard" placeholder="仅运营可见">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit">提交认证</button>
+        <div id="vyMsg" style="margin-top:8px;"></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- P0-4 艺人入驻 Modal -->
+<div class="modal-overlay" id="intakeModal" onclick="App.closeIntake()">
+  <div class="modal modal-lg" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>⭐ 艺人入驻（自助 seeding）</h3>
+      <button class="modal-close" onclick="App.closeIntake()">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-sm text-secondary">小艺人 / 新人或经纪均可提交基础信息，进入审核池。审核通过后并入正式艺人库，享受风险体检与商业价值分析。</p>
+      <form id="intakeForm" onsubmit="App.submitIntake(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>艺人名称 <span style="color:var(--danger);">*</span></label>
+            <input class="form-input" type="text" id="itName" placeholder="艺人名/艺名" required>
+          </div>
+          <div class="form-group">
+            <label>性别 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+            <select class="form-input" id="itGender"><option value="">不限</option><option>男</option><option>女</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>年龄 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+            <input class="form-input" type="number" id="itAge" placeholder="如：22">
+          </div>
+          <div class="form-group">
+            <label>主攻赛道 / 品类 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+            <input class="form-input" type="text" id="itCategory" placeholder="如：短视频 / 音乐 / 演员">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>经纪公司 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <input class="form-input" type="text" id="itAgency" placeholder="如无填「独立」">
+        </div>
+        <div class="form-group">
+          <label>社媒主页 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <input class="form-input" type="text" id="itSocial" placeholder="微博/抖音/小红书链接，逗号分隔">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>微博粉丝 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+            <input class="form-input" type="text" id="itWeibo" placeholder="如：120万">
+          </div>
+          <div class="form-group">
+            <label>抖音粉丝 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+            <input class="form-input" type="text" id="itDouyin" placeholder="如：300万">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>人设标签 <span style="color:var(--text-tertiary);font-weight:400;">(选填)</span></label>
+          <input class="form-input" type="text" id="itPersona" placeholder="如：甜美/搞笑/国风">
+        </div>
+        <div class="form-group">
+          <label>联系方式 <span style="color:var(--text-tertiary);font-weight:400;">(选填，仅运营可见)</span></label>
+          <input class="form-input" type="text" id="itContact" placeholder="微信/手机">
+        </div>
+        <button class="btn btn-primary btn-block btn-lg" type="submit">提交入驻申请</button>
+        <div id="itMsg" style="margin-top:8px;"></div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- Page Container -->
 <div class="page-wrap">
   <div id="pageContainer"></div>
@@ -2006,6 +2184,6 @@ canvas { max-width: 100%; }
   <button class="btn btn-sm" style="background:transparent; color:rgba(255,255,255,0.8); border:none; padding:6px 10px;" onclick="document.getElementById('updateBanner').style.display='none'">稍后</button>
 </div>
 
-<script src="app.js?v=2.4.0"></script>
+<script src="app.js?v=2.9.0"></script>
 </body>
 </html>
