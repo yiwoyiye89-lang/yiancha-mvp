@@ -3,7 +3,7 @@
    ============================================ */
 
 // === 当前前端版本号（Task #3: 与 version.json 比对，发现新版本弹刷新提示） ===
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '2.10.0';
 
 // === 内置10人示例数据（离线兜底，API不可用时即时体验） ===
 const OFFLINE_DEMO_DATA = [
@@ -1482,6 +1482,7 @@ const App = {
   // ---- Render Home Page ----
   renderHomePage(container) {
     const heroSearchVal = this.state.filters.name || '';
+    const rv = this.state.roleView || 'visitor';
     container.innerHTML = `
       <!-- Hero -->
       <div class="hero-section">
@@ -1505,6 +1506,25 @@ const App = {
             <a onclick="document.getElementById('heroSearch').value='王一博';App.doSearch()">王一博</a>
             <a onclick="document.getElementById('heroSearch').value='赵丽颖';App.doSearch()">赵丽颖</a>
           </div>
+        </div>
+      </div>
+
+      <!-- 身份视角分流（新定位：双边交易平台 + 职业信任社区） -->
+      <div class="card mb-6" style="border:1px solid var(--border,#E5E7EB);">
+        <div class="card-body">
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;font-weight:600;">选择你的身份视角 · 平台将据此优化首页与候选推荐</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+            <div class="role-card" data-role="visitor" onclick="App.setRoleView('visitor')" style="border:2px solid ${rv==='visitor'?'var(--primary,#2563EB)':'#E5E7EB'};border-radius:12px;padding:14px;cursor:pointer;background:${rv==='visitor'?'#EFF6FF':'#fff'};">
+              <div style="font-size:22px;">🔍</div><div style="font-weight:700;font-size:14px;margin-top:6px;">浏览 / 尽调</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;line-height:1.5;">搜索艺人、查风险与商业价值</div>
+            </div>
+            <div class="role-card" data-role="brand" onclick="App.setRoleView('brand')" style="border:2px solid ${rv==='brand'?'var(--primary,#2563EB)':'#E5E7EB'};border-radius:12px;padding:14px;cursor:pointer;background:${rv==='brand'?'#EFF6FF':'#fff'};">
+              <div style="font-size:22px;">🎯</div><div style="font-weight:700;font-size:14px;margin-top:6px;">品牌方</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;line-height:1.5;">发布代言需求，智能匹配候选艺人</div>
+            </div>
+            <div class="role-card" data-role="agency" onclick="App.setRoleView('agency')" style="border:2px solid ${rv==='agency'?'var(--primary,#2563EB)':'#E5E7EB'};border-radius:12px;padding:14px;cursor:pointer;background:${rv==='agency'?'#EFF6FF':'#fff'};">
+              <div style="font-size:22px;">🤝</div><div style="font-weight:700;font-size:14px;margin-top:6px;">经纪人 / 机构</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;line-height:1.5;">管理旗下艺人，承接品牌订单分润</div>
+            </div>
+          </div>
+          <div id="roleCtaArea" style="margin-top:12px;">${this.roleCtaHtml(rv)}</div>
         </div>
       </div>
 
@@ -1810,6 +1830,12 @@ const App = {
 
         <!-- Commercial Tab -->
         <div class="tab-content" id="tab-commercial">
+          <!-- 资产页信任与接单信号（LinkedIn×贝壳式） -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            <span class="plan-tag" style="background:#ECFDF5;color:#059669;">✓ 艺安查风控引擎认证</span>
+            <span class="plan-tag" style="background:#EFF6FF;color:#2563EB;">● 开放接单（双盲匹配）</span>
+            <span class="plan-tag" style="background:#F1F5F9;color:#334155;">数据来源透明可溯源</span>
+          </div>
           <div class="card mb-6">
             <div class="card-header">商业价值概览</div>
             <div class="card-body">
@@ -2185,6 +2211,27 @@ const App = {
       </div>
       <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color};"></div></div>
     </div>`;
+  },
+
+  // 身份视角分流（新定位：双边交易平台 + 职业信任社区）
+  roleCtaHtml(v) {
+    if (v === 'brand') {
+      return `<button class="btn btn-primary btn-sm" onclick="App.openBrandMatch();App.gotoDemandBoard()">🎯 发布代言需求，智能匹配候选艺人</button>`;
+    }
+    if (v === 'agency') {
+      return `<button class="btn btn-primary btn-sm" onclick="App.openBrandMatch();App.gotoMyRequirements()">🤝 管理我的艺人接单看板</button>`;
+    }
+    return `<span style="font-size:12px;color:var(--text-tertiary);">登录后可解锁「发布需求 / 艺人管理」等 B2B 功能 · <button class="btn btn-ghost btn-xs" onclick="App.openAuth()">登录</button></span>`;
+  },
+  setRoleView(v) {
+    this.state.roleView = v;
+    document.querySelectorAll('.role-card').forEach(el => {
+      const r = el.getAttribute('data-role');
+      el.style.borderColor = (r === v) ? 'var(--primary,#2563EB)' : '#E5E7EB';
+      el.style.background = (r === v) ? '#EFF6FF' : '#fff';
+    });
+    const cta = document.getElementById('roleCtaArea');
+    if (cta) cta.innerHTML = this.roleCtaHtml(v);
   },
 
   switchTab(tabId) {
@@ -2574,6 +2621,17 @@ const App = {
           </div>
           <div style="width:100%;height:10px;border-radius:6px;background:#eee;overflow:hidden;"><div style="width:${Math.round(conf * 100)}%;height:100%;background:${this.gcvConfColor(conf)};"></div></div>
           <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">转化力来自 AFF 战报(自动) · 粉丝/形象/作品力为人工录入位，置信度随数据入库爬升</div>
+          <!-- P1-0 数据来源溯源（置信度拆解，透明卖点） -->
+          <div class="card" style="background:var(--gray-50,#F9FAFB);margin-top:12px;">
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text-secondary);">数据来源溯源（置信度拆解）</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+              ${d.confidence_breakdown ? Object.entries(d.confidence_breakdown).map(([k,v])=>`
+                <span style="font-size:11px;padding:3px 9px;border-radius:12px;background:${v.is_real?'#ECFDF5':'#FEF2F2'};color:${v.is_real?'#059669':'#DC2626'};white-space:nowrap;">
+                  ${v.label} · ${v.source} · ${Math.round(v.confidence*100)}%${v.is_real?' ✓':''}
+                </span>`).join('') : '<span style="font-size:11px;color:var(--text-tertiary);">暂无溯源数据</span>'}
+            </div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:8px;">绿色=真实可核验信号（AFF战报 / 权威奖项库 / 官方API）；红色=代理估算（待第三方采集补齐）。整体真实信号占比 <b style="color:#059669;">${Math.round((d.real_signal_ratio||0)*100)}%</b>。</div>
+          </div>
         </div>
       </div>
 
