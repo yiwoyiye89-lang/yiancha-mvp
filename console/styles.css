@@ -104,6 +104,18 @@ td .muted { color: var(--text-soft); }
 .b-inactive { background:#fee2e2; color:#b91c1c; }
 .b-yes { background:#dcfce7; color:#15803d; }
 .b-no { background:#f1f5f9; color:#64748b; }
+.b-open { background:#dbeafe; color:#1d4ed8; }
+.b-matched { background:#dcfce7; color:#15803d; }
+.b-closed { background:#f1f5f9; color:#64748b; }
+.b-低风险 { background:#dcfce7; color:#15803d; }
+.b-中风险 { background:#fef3c7; color:#b45309; }
+.b-高风险 { background:#fee2e2; color:#b91c1c; }
+.b-S { background:#fde68a; color:#92400e; }
+.b-A { background:#ddd6fe; color:#5b21b6; }
+.b-B { background:#bfdbfe; color:#1e40af; }
+.b-C { background:#e2e8f0; color:#475569; }
+.nowrap { white-space: nowrap; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
 
 .pager { display: flex; align-items: center; gap: 12px; justify-content: flex-end; margin-top: 14px; font-size: 13px; color: var(--text-soft); }
 .empty { text-align: center; color: var(--text-soft); padding: 40px; }
