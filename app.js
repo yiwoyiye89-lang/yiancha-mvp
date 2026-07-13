@@ -2592,16 +2592,23 @@ const App = {
     const dimOrder = ['conversion', 'fans_asset', 'traffic', 'image', 'work'];
     const dimRows = dimOrder.map(k => {
       const dv = dims[k];
-      return `<tr>
-        <td style="font-weight:600;">${dv.label}</td>
-        <td style="text-align:center;font-weight:700;">${dv.score}</td>
+      // 奖项库命中真实信号 → 作品力维度明确标绿
+      const isAward = (k === 'work' && dv.detail && dv.detail.is_real);
+      const rowBg = isAward ? '#ECFDF5' : '';
+      const badge = isAward ? ` <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:#10B981;color:#fff;font-weight:700;white-space:nowrap;vertical-align:middle;">🏆 奖项真实信号</span>` : '';
+      const noteColor = isAward ? '#059669' : 'var(--text-tertiary)';
+      const scoreColor = isAward ? 'color:#059669;' : '';
+      const leftBorder = isAward ? 'border-left:3px solid #10B981;' : 'border-left:3px solid transparent;';
+      return `<tr style="background:${rowBg};">
+        <td style="font-weight:600;${leftBorder}">${dv.label}${badge}</td>
+        <td style="text-align:center;font-weight:700;${scoreColor}">${dv.score}</td>
         <td style="text-align:center;">
           <div style="display:inline-flex;align-items:center;gap:6px;justify-content:center;">
             <div style="width:54px;height:6px;border-radius:4px;background:#eee;overflow:hidden;"><div style="width:${Math.round(dv.confidence * 100)}%;height:100%;background:${this.gcvConfColor(dv.confidence)};"></div></div>
             <span style="font-size:11px;color:${this.gcvConfColor(dv.confidence)};">${Math.round(dv.confidence * 100)}%</span>
           </div>
         </td>
-        <td style="font-size:11px;color:var(--text-tertiary);max-width:200px;">${this.gcvDimNote(k, dv)}</td>
+        <td style="font-size:11px;color:${noteColor};max-width:200px;line-height:1.5;">${this.gcvDimNote(k, dv)}</td>
       </tr>`;
     }).join('');
 
@@ -2693,7 +2700,16 @@ const App = {
       fans_asset: '超话/站子入库前人工',
       traffic: dv.detail && dv.detail.heat ? `微博${dv.detail.weibo || '-'}·抖音${dv.detail.douyin || '-'}·热度${dv.detail.heat}` : '半自动',
       image: '舆情词云入库前人工',
-      work: '奖项库入库前人工',
+      work: (() => {
+        if (dv.detail && dv.detail.is_real && dv.detail.award_matched && dv.detail.award_matched.length) {
+          // 去重：剔除被其它奖项名包含的别名（如 "白玉兰" 被 "白玉兰奖" 包含）
+          const m = dv.detail.award_matched.slice();
+          const dedup = m.filter((x, i) => !m.some((y, j) => j !== i && y.length > x.length && y.indexOf(x) >= 0));
+          return `🏆 命中权威奖项库：${dedup.join(' · ')}（真实可核验${dv.detail.awards_count ? '，' + dv.detail.awards_count + '项' : ''}）`;
+        }
+        if (dv.detail && dv.detail.awards_count) return `奖项${dv.detail.awards_count}项（未命中权威库，代理估算）`;
+        return '奖项库入库前人工';
+      })(),
     };
     return map[k] || '';
   },
