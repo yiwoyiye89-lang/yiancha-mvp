@@ -15,8 +15,22 @@
     { key: "invites", label: "邀请码", ico: "✉", perm: "invite:view", crumb: "邀请码管理" },
     { key: "leads", label: "商务线索", ico: "💼", perm: "lead:view", crumb: "商务线索" },
     { key: "intake", label: "入驻审核", ico: "📝", perm: "intake:view", crumb: "艺人入驻审核" },
-    { key: "pricing", label: "双盲撮合", ico: "⚖", perm: "pricing:view", crumb: "双盲定价撮合(P2)" },
+    { key: "pricing", label: "双盲撮合", ico: "⚖", perm: "pricing:view", crumb: "双盲定价撮合" },
+    { key: "staff", label: "员工管理", ico: "🛡", perm: "staff:view", crumb: "员工管理" },
   ];
+
+  // 角色中文标签（与后端 DEFAULT_ROLES 保持一致）
+  const ROLE_LABELS = {
+    super_admin: "超级管理员",
+    operations: "运营",
+    business: "商务",
+    risk: "风控",
+    finance: "财务",
+    viewer: "只读访客",
+  };
+  const ROLE_KEYS = Object.keys(ROLE_LABELS);
+  function sideLabel(s) { return s === "brand" ? "品牌方" : (s === "artist" ? "艺人方" : (s || "—")); }
+  function statusLabel(s) { return s === "open" ? "开放" : (s === "matched" ? "已匹配" : (s === "closed" ? "已关闭" : (s || "—"))); }
 
   let token = localStorage.getItem(LS_TOKEN);
   let staff = null;
@@ -152,6 +166,7 @@
     if (key === "leads") return renderLeads(page);
     if (key === "intake") return renderIntake(page);
     if (key === "pricing") return renderPricing(page);
+    if (key === "staff") return renderStaff(page);
   }
 
   // ============ 看板 ============
@@ -470,11 +485,276 @@
     }
   }
 
-  // ============ 双盲撮合(P2 占位) ============
-  function renderPricing(root) {
-    root.innerHTML = '<div class="card"><div class="card-title">双盲定价撮合 · P2 模块</div>' +
-      '<p class="muted">该模块（双盲撮合列表 + 推荐逻辑配置台）已规划，按既定优先级排在 P2 阶段，本次未实现。</p>' +
-      '<p>可用的接口权限点：<code>pricing:view</code>（查看撮合）、<code>pricing:config</code>（配置推荐逻辑）。后端 <code>pricing_requests</code> 表已就绪，P2 阶段可在此基础上搭建撮合榜单与权重配置台。</p></div>';
+  // ============ 双盲撮合配置台 + 员工管理 (P2) ============
+  let pricingState = { page: 1, side: "", status: "" };
+
+  // ---------- 通用表单字段 ----------
+  function field(label, html) { return "<div class='field'><label>" + label + "</label>" + html + "</div>"; }
+
+  // ---------- 员工管理 ----------
+  async function renderStaff(root) {
+    const canManage = hasPerm("staff:manage");
+    const canPwd = hasPerm("self:password");
+    root.innerHTML =
+      '<div class="toolbar">' +
+        (canManage ? '<button class="btn-primary btn" id="s-new">+ 新建员工</button>' : "") +
+        (canPwd ? '<button class="btn" id="s-pwd">修改我的密码</button>' : "") +
+      '</div>' +
+      '<div id="s-box"><div class="empty">加载中…</div></div>';
+    if (canManage) $("#s-new").onclick = openNewStaff;
+    if (canPwd) $("#s-pwd").onclick = openChangePwd;
+    loadStaff();
+
+    async function loadStaff() {
+      const box = $("#s-box");
+      box.innerHTML = '<div class="empty">加载中…</div>';
+      try {
+        const d = await api("/admin/staff");
+        if (!d.items.length) { box.innerHTML = '<div class="empty">暂无员工账号</div>'; return; }
+        const me = staff.id;
+        let rows = d.items.map((u) => {
+          const isMe = u.id === me;
+          let acts = "";
+          if (canManage) {
+            acts =
+              "<button class='btn btn-sm' data-role='" + u.id + "'" + (isMe ? " disabled title='不能修改自己角色'" : "") + ">改角色</button> " +
+              "<button class='btn btn-sm' data-status='" + u.id + "'" + (isMe ? " disabled title='不能停用自己'" : "") + ">" + (u.is_active ? "停用" : "启用") + "</button> " +
+              "<button class='btn btn-sm' data-reset='" + u.id + "'>重置密码</button>";
+          }
+          return "<tr data-id='" + u.id + "'>" +
+            "<td>" + u.id + "</td>" +
+            "<td>" + esc(u.username) + "</td>" +
+            "<td>" + esc(u.real_name) + "</td>" +
+            "<td>" + badge(u.role_label) + "</td>" +
+            "<td>" + (u.is_active ? badge("启用", "b-active") : badge("停用", "b-inactive")) + "</td>" +
+            "<td class='muted'>" + fmtTime(u.created_at) + "</td>" +
+            "<td class='muted'>" + fmtTime(u.last_login_at) + "</td>" +
+            "<td class='nowrap'>" + (acts || "<span class='muted'>—</span>") + "</td>" +
+            "</tr>";
+        }).join("");
+        box.innerHTML = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>账号</th><th>姓名</th><th>角色</th><th>状态</th><th>创建</th><th>最近登录</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+        if (canManage) {
+          box.querySelectorAll("[data-role]").forEach((b) => { b.onclick = () => openEditRole(b.dataset.role); });
+          box.querySelectorAll("[data-status]").forEach((b) => { b.onclick = () => { const deact = b.textContent.trim() === "停用"; if (confirm("确认" + (deact ? "停用" : "启用") + "该员工账号？")) toggleStatus(b.dataset.status, deact); }; });
+          box.querySelectorAll("[data-reset]").forEach((b) => { b.onclick = () => openResetPwd(b.dataset.reset); });
+        }
+      } catch (e) {
+        box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
+      }
+    }
+
+    function openNewStaff() {
+      const roleOpts = ROLE_KEYS.map((k) => "<option value='" + k + "'>" + ROLE_LABELS[k] + "</option>").join("");
+      openModal(
+        "<h3>新建员工账号</h3>" +
+        field("登录用户名（≥3位）", "<input id='n-user' placeholder='如：li_ming'>") +
+        field("初始密码（≥8位）", "<input id='n-pwd' type='password' placeholder='至少8位'>") +
+        field("真实姓名", "<input id='n-name' placeholder='如：李明'>") +
+        field("角色", "<select id='n-role'>" + roleOpts + "</select>") +
+        "<div class='modal-actions'><button class='btn' id='n-cancel'>取消</button><button class='btn-primary btn' id='n-ok'>创建</button></div>"
+      );
+      $("#n-cancel").onclick = closeModal;
+      $("#n-ok").onclick = async () => {
+        const body = { username: $("#n-user").value.trim(), password: $("#n-pwd").value, real_name: $("#n-name").value.trim(), role: $("#n-role").value };
+        try { await api("/admin/staff", { method: "POST", body }); toast("员工已创建", "ok"); closeModal(); loadStaff(); }
+        catch (e) { toast(e.message, "err"); }
+      };
+    }
+
+    function openEditRole(id) {
+      const roleOpts = ROLE_KEYS.map((k) => "<option value='" + k + "'>" + ROLE_LABELS[k] + "</option>").join("");
+      openModal(
+        "<h3>修改员工角色 #" + id + "</h3>" +
+        field("新角色", "<select id='r-role'>" + roleOpts + "</select>") +
+        "<div class='modal-actions'><button class='btn' id='r-cancel'>取消</button><button class='btn-primary btn' id='r-ok'>保存</button></div>"
+      );
+      $("#r-cancel").onclick = closeModal;
+      $("#r-ok").onclick = async () => {
+        try { await api("/admin/staff/" + id, { method: "PUT", body: { role: $("#r-role").value } }); toast("角色已更新", "ok"); closeModal(); loadStaff(); }
+        catch (e) { toast(e.message, "err"); }
+      };
+    }
+
+    function toggleStatus(id, deactivate) {
+      api("/admin/staff/" + id, { method: "PUT", body: { is_active: !deactivate } })
+        .then(() => { toast("已" + (deactivate ? "停用" : "启用"), "ok"); loadStaff(); })
+        .catch((e) => { toast(e.message, "err"); loadStaff(); });
+    }
+
+    function openResetPwd(id) {
+      openModal(
+        "<h3>重置密码 #" + id + "</h3>" +
+        field("新密码（≥8位）", "<input id='rp-pwd' type='password' placeholder='至少8位'>") +
+        "<div class='modal-actions'><button class='btn' id='rp-cancel'>取消</button><button class='btn-primary btn' id='rp-ok'>重置</button></div>"
+      );
+      $("#rp-cancel").onclick = closeModal;
+      $("#rp-ok").onclick = async () => {
+        try { await api("/admin/staff/" + id + "/reset-password", { method: "POST", body: { new_password: $("#rp-pwd").value } }); toast("密码已重置", "ok"); closeModal(); loadStaff(); }
+        catch (e) { toast(e.message, "err"); }
+      };
+    }
+  }
+
+  function openChangePwd() {
+    openModal(
+      "<h3>修改我的密码</h3>" +
+      field("原密码", "<input id='cp-old' type='password'>") +
+      field("新密码（≥8位）", "<input id='cp-new' type='password'>") +
+      "<div class='modal-actions'><button class='btn' id='cp-cancel'>取消</button><button class='btn-primary btn' id='cp-ok'>保存</button></div>"
+    );
+    $("#cp-cancel").onclick = closeModal;
+    $("#cp-ok").onclick = async () => {
+      try {
+        await api("/admin/auth/change-password", { method: "POST", body: { old_password: $("#cp-old").value, new_password: $("#cp-new").value } });
+        toast("密码已修改，请重新登录", "ok"); closeModal(); logout("密码已修改，请重新登录");
+      } catch (e) { toast(e.message, "err"); }
+    };
+  }
+
+  // ---------- 双盲撮合配置台 ----------
+  async function renderPricing(root) {
+    const canConfig = hasPerm("pricing:config");
+    root.innerHTML =
+      '<div class="card"><div class="card-title">双盲撮合 · 推荐逻辑配置' +
+        (canConfig ? '<button class="btn-sm btn btn-primary" id="p-cfg-edit">编辑权重/阈值</button>' : '<span class="sub">只读（需 pricing:config 权限）</span>') +
+      '</div><div id="p-cfg-box"><div class="empty">加载中…</div></div></div>' +
+      '<div class="toolbar">' +
+        '<select id="p-side"><option value="">全部方向</option><option value="brand">品牌方</option><option value="artist">艺人方</option></select>' +
+        '<select id="p-status"><option value="">全部状态</option><option value="open">开放</option><option value="matched">已匹配</option><option value="closed">已关闭</option></select>' +
+        '<button class="btn-primary btn" id="p-search">查询</button>' +
+      '</div>' +
+      '<div id="p-box"><div class="empty">加载中…</div></div>';
+    if (canConfig) $("#p-cfg-edit").onclick = openConfigEditor;
+    $("#p-search").onclick = () => { pricingState.side = $("#p-side").value; pricingState.status = $("#p-status").value; pricingState.page = 1; loadRequests(); };
+    loadConfig();
+    loadRequests();
+
+    async function loadConfig() {
+      try { const c = await api("/admin/pricing/config"); $("#p-cfg-box").innerHTML = renderConfigSummary(c); }
+      catch (e) { $("#p-cfg-box").innerHTML = '<div class="empty">配置加载失败：' + esc(e.message) + '</div>'; }
+    }
+    async function loadRequests() {
+      const box = $("#p-box");
+      box.innerHTML = '<div class="empty">加载中…</div>';
+      try {
+        let qs = "?page=" + pricingState.page + "&page_size=20";
+        if (pricingState.side) qs += "&side=" + pricingState.side;
+        if (pricingState.status) qs += "&status=" + pricingState.status;
+        const d = await api("/admin/pricing/requests" + qs);
+        if (!d.items.length) { box.innerHTML = '<div class="empty">暂无撮合请求</div>'; return; }
+        let rows = d.items.map((r) =>
+          "<tr data-id='" + r.id + "' style='cursor:pointer'>" +
+          "<td>" + r.id + "</td>" +
+          "<td>" + badge(sideLabel(r.side)) + "</td>" +
+          "<td>" + esc(r.category || "—") + "</td>" +
+          "<td>" + esc(r.scenario || "—") + "</td>" +
+          "<td>" + badge(statusLabel(r.status), "b-" + r.status) + "</td>" +
+          "<td>" + esc(r.artist_name_hint || "—") + "</td>" +
+          "<td>" + (r.budget_range ? ("预算 " + esc(r.budget_range)) : (r.quote_range ? ("报价 " + esc(r.quote_range)) : "—")) + "</td>" +
+          "<td class='muted'>" + fmtTime(r.created_at) + "</td>" +
+          "</tr>"
+        ).join("");
+        box.innerHTML = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>方向</th><th>品类</th><th>场景</th><th>状态</th><th>匿名艺人</th><th>金额区间</th><th>提交时间</th></tr></thead><tbody>' + rows + '</tbody></table></div>' + pager(d.total, d.page, d.page_size);
+        box.querySelectorAll("tbody tr").forEach((tr) => { tr.onclick = () => openRequestDetail(tr.dataset.id); });
+        bindPager(d, loadRequests);
+      } catch (e) { box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>'; }
+    }
+  }
+
+  function renderConfigSummary(c) {
+    const w = c.weights || {}, th = c.thresholds || {};
+    const pct = (x) => Math.round((x || 0) * 100) + "%";
+    return '<div class="kv">' +
+      kv("预算契合权重", pct(w.budget_fit)) +
+      kv("品类契合权重", pct(w.category_fit)) +
+      kv("风险契合权重", pct(w.risk_fit)) +
+      kv("商业契合权重", pct(w.commercial_fit)) +
+      kv("最低匹配阈值", (th.min_match_pct != null ? th.min_match_pct : "—") + "%") +
+      kv("最高可接受风险", th.max_risk_level || "不限制") +
+      kv("强制同品类", th.require_category ? "是" : "否") +
+      kv("最近更新", (c.updated_by ? esc(c.updated_by) + " · " : "") + fmtTime(c.updated_at)) +
+      "</div>";
+  }
+
+  function openConfigEditor() {
+    api("/admin/pricing/config").then((c) => {
+      const w = c.weights || {}, th = c.thresholds || {};
+      const riskOpts = ["", "低风险", "中风险", "高风险"].map((r) =>
+        "<option value='" + r + "'" + ((th.max_risk_level || "") === r ? " selected" : "") + ">" + (r || "不限制") + "</option>").join("");
+      openModal(
+        "<h3>编辑推荐逻辑配置</h3>" +
+        "<p class='muted' style='margin-top:0'>权重会自动归一化为合计 100%（填入 0~1 或任意正数）。</p>" +
+        field("预算契合权重 (budget_fit)", "<input id='cfg-budget' type='number' step='0.05' min='0' value='" + (w.budget_fit != null ? w.budget_fit : 0) + "'>") +
+        field("品类契合权重 (category_fit)", "<input id='cfg-cat' type='number' step='0.05' min='0' value='" + (w.category_fit != null ? w.category_fit : 0) + "'>") +
+        field("风险契合权重 (risk_fit)", "<input id='cfg-risk' type='number' step='0.05' min='0' value='" + (w.risk_fit != null ? w.risk_fit : 0) + "'>") +
+        field("商业契合权重 (commercial_fit)", "<input id='cfg-com' type='number' step='0.05' min='0' value='" + (w.commercial_fit != null ? w.commercial_fit : 0) + "'>") +
+        "<hr style='border:none;border-top:1px solid var(--line);margin:16px 0'>" +
+        field("最低匹配阈值 (%)", "<input id='cfg-min' type='number' step='1' min='0' max='100' value='" + (th.min_match_pct != null ? th.min_match_pct : 20) + "'>") +
+        field("最高可接受风险档", "<select id='cfg-maxrisk'>" + riskOpts + "</select>") +
+        field("强制同品类", "<label style='display:inline-flex;gap:6px;align-items:center'><input id='cfg-catreq' type='checkbox'" + (th.require_category ? " checked" : "") + "> 仅推荐同品类撮合</label>") +
+        "<div class='modal-actions'><button class='btn' id='cfg-cancel'>取消</button><button class='btn-primary btn' id='cfg-save'>保存</button></div>"
+      );
+      $("#cfg-cancel").onclick = closeModal;
+      $("#cfg-save").onclick = async () => {
+        const body = {
+          weights: {
+            budget_fit: parseFloat($("#cfg-budget").value) || 0,
+            category_fit: parseFloat($("#cfg-cat").value) || 0,
+            risk_fit: parseFloat($("#cfg-risk").value) || 0,
+            commercial_fit: parseFloat($("#cfg-com").value) || 0,
+          },
+          thresholds: {
+            min_match_pct: parseInt($("#cfg-min").value) || 0,
+            max_risk_level: $("#cfg-maxrisk").value || null,
+            require_category: $("#cfg-catreq").checked,
+          },
+        };
+        try { await api("/admin/pricing/config", { method: "PUT", body }); toast("配置已保存", "ok"); closeModal(); renderPricing($("#page")); }
+        catch (e) { toast(e.message, "err"); }
+      };
+    }).catch((e) => toast(e.message, "err"));
+  }
+
+  async function openRequestDetail(id) {
+    const d = await api("/admin/pricing/requests/" + id);
+    let recHtml;
+    if (!d.recommendations.length) {
+      recHtml = '<div class="empty">当前配置下无推荐匹配</div>';
+    } else {
+      let rows = d.recommendations.map((r, i) =>
+        "<tr>" +
+        "<td>" + (i + 1) + "</td>" +
+        "<td>" + badge(sideLabel(r.side)) + "</td>" +
+        "<td>" + esc(r.artist_name) + "</td>" +
+        "<td>" + esc(r.category || "—") + "</td>" +
+        "<td>" + esc(r.scenario || "—") + "</td>" +
+        "<td>" + (r.match_pct != null ? r.match_pct + "%" : "—") + "</td>" +
+        "<td><b>" + (r.recommend_score != null ? r.recommend_score : "—") + "</b></td>" +
+        "<td>" + (r.risk_level ? badge(r.risk_level, "b-" + r.risk_level) : "—") + "</td>" +
+        "<td>" + (r.heat_level ? badge(r.heat_level, "b-" + r.heat_level) : "—") + "</td>" +
+        "</tr>"
+      ).join("");
+      recHtml = '<div class="table-wrap"><table><thead><tr><th>#</th><th>方向</th><th>匿名艺人</th><th>品类</th><th>场景</th><th>区间重叠</th><th>推荐分</th><th>风险档</th><th>热度</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+    const rangeTxt = (d.budget_min_wan != null)
+      ? ("预算 " + Math.round(d.budget_min_wan) + "~" + Math.round(d.budget_max_wan) + "万")
+      : ((d.quote_min_wan != null) ? ("报价 " + Math.round(d.quote_min_wan) + "~" + Math.round(d.quote_max_wan) + "万") : "—");
+    let html = "<h3>撮合请求 #" + d.id + " " + badge(statusLabel(d.status), "b-" + d.status) + "</h3>" +
+      "<div class='kv'>" +
+      kv("方向", sideLabel(d.side)) +
+      kv("品类", esc(d.category || "—")) +
+      kv("场景", esc(d.scenario || "—")) +
+      kv("金额区间", rangeTxt) +
+      kv("匿名艺人提示", esc(d.artist_name_hint || "—")) +
+      kv("备注", esc(d.note || "—")) +
+      kv("关联艺人ID", d.artist_id != null ? ("#" + d.artist_id) : "—") +
+      kv("提交时间", fmtTime(d.created_at)) +
+      "</div>" +
+      "<div class='card-title' style='margin-top:18px'>推荐匹配 · 基于当前配置实时计算，共 " + d.recommend_count + " 条</div>" +
+      recHtml +
+      "<div class='modal-actions'><button class='btn' id='rd-close'>关闭</button></div>";
+    openModal(html);
+    $("#rd-close").onclick = closeModal;
   }
 
   // ---------- 通用 ----------
@@ -504,7 +784,8 @@
     const key = location.hash.replace("#/", "");
     if (key === "users") usersState.page = p;
     else if (key === "leads") leadsState.page = p;
-    else if (key === "intake") intakeState.page = p;
+    else     if (key === "intake") intakeState.page = p;
+    else if (key === "pricing") pricingState.page = p;
   }
 
   // ---------- 启动 ----------
