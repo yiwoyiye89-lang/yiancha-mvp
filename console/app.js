@@ -1,332 +1,277 @@
-/* 艺安查管理后台 · V9 Canvas 画布登录
- * 整个登录界面用 Canvas 2D API 绘制，DOM 零文本入口元素。
- * 浏览器 autofill/密码管理器无法注入到 Canvas 像素内容中。
+/* 艺安查管理后台 · V9b Canvas 登录（精简稳定版）
+ * Canvas 绘制 = 零 DOM 文本入口 = 浏览器 autofill 无法注入白条
  */
 (function () {
   "use strict";
 
-  const API = "https://yiancha-backend.onrender.com/api/v1";
-  const LS_TOKEN = "yc_token";
-  const LS_STAFF = "yc_staff";
+  var API = "https://yiancha-backend.onrender.com/api/v1";
+  var LS_TOKEN = "yc_token";
+  var LS_STAFF = "yc_staff";
 
-  // ═══════════════════════════════════════════
-  // Canvas 登录系统（V9 核方案）
-  // ═══════════════════════════════════════════
+  /* ═══ Canvas 登录 ═══ */
 
   var cv = document.getElementById("lc");
   var ctx = cv.getContext("2d");
+  var CW = 360, CH = 440;
 
-  // --- 尺寸 ---
-  var W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
-  var CW = 360, CH = 420; // 逻辑画布尺寸
+  // 固定尺寸，不依赖 DPR
+  cv.width = CW;
+  cv.height = CH;
+  cv.style.width = CW + "px";
+  cv.style.height = CH + "px";
 
-  function resize() {
-    W = Math.min(CW, window.innerWidth * 0.96);
-    H = Math.min(CH, window.innerHeight * 0.96);
-    cv.width = W * DPR;
-    cv.height = H * DPR;
-    cv.style.width = W + "px";
-    cv.style.height = H + "px";
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    render();
-  }
-
-  // --- 状态机 ---
-  // 0=初始(按钮), 1=用户名输入, 2=密码输入, 3=提交中, 4=错误
-  var S = 0;
+  var S = 0; // 0=按钮 1=用户名 2=密码 3=提交中 4=错误
   var uname = "";
   var pwdChars = [];
   var errMsg = "";
-  var cursorBlink = true;
+  var cursorOn = true;
   var cursorTimer = null;
 
-  // --- 颜色 ---
-  var C = {
-    bgTop: "#0f172a", bgBot: "#1d3a6b",
-    cardBg: "#ffffff",
-    logo: "#2563eb", sub: "#64748b",
-    btnBg: "#3b82f6", btnHov: "#2563eb", btnTxt: "#ffffff",
-    fieldBg: "#f8fafc", fieldBorder: "#e2e8f0", fieldFocus: "#3b82f6",
-    txt: "#1e293b", ph: "#94a3b8", err: "#dc2626",
-    foot: "#94a3b8"
-  };
-
-  // --- 布局参数（逻辑坐标） ---
-  function L() {
-    var s = W / CW; // 缩放比
-    return {
-      cardX: (W - 320 * s) / 2, cardY: H * 0.12,
-      cardW: 320 * s, cardR: 16 * s,
-      logoY: 0, subY: 0, btnY: 0, btnW: 280 * s, btnH: 44 * s,
-      fieldY: 0, fieldW: 280 * s, fieldH: 42 * s,
-      footY: 0
-    };
-  }
-  function layout() {
-    var l = L();
-    l.logoY = l.cardY + 36 * (W/CW);
-    l.subY = l.logoY + 32 * (W/CW);
-    l.btnY = l.subY + 52 * (W/CW);
-    l.fieldY = l.subY + 48 * (W/CW);
-    l.footY = l.cardY + l.cardW * 0.85;
-    return l;
-  }
-
-  // --- 绘制函数 ---
-
-  function drawBg() {
-    var g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, C.bgTop); g.addColorStop(1, C.bgBot);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  }
-
-  function drawCard(l) {
-    roundRect(l.cardX, l.cardY, l.cardW, l.cardW * 1.05, l.cardR, C.cardBg);
-  }
-
-  function drawLogo(l) {
-    ctx.font = "bold " + Math.round(26 * W / CW) + "px sans-serif";
-    ctx.fillStyle = C.logo;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("YC", W / 2, l.logoY);
-  }
-
-  function drawSub(l) {
-    ctx.font = Math.round(12 * W / CW) + "px sans-serif";
-    ctx.fillStyle = C.sub;
-    ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText("\u63a7\u5236\u53f0", W / 2, l.subY);
-  }
-
-  function drawButton(l, label, hover) {
-    var bx = (W - l.btnW) / 2, by = l.btnY;
-    roundRect(bx, by, l.btnW, l.btnH, 10 * (W/CW), hover ? C.btnHov : C.btnBg);
-    ctx.fillStyle = C.btnTxt;
-    ctx.font = Math.round(15 * W / CW) + "px sans-serif";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(label, W / 2, by + l.btnH / 2);
-  }
-
-  function drawField(l, label, value, isPwd, focused) {
-    var fy = l.fieldY;
-    // label
-    ctx.font = Math.round(12 * W / CW) + "px sans-serif";
-    ctx.fillStyle = C.txt;
-    ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-    ctx.fillText(label, (W - l.fieldW) / 2, fy - 6 * (W/CW));
-    // field background
-    var fx = (W - l.fieldW) / 2;
-    roundRect(fx, fy, l.fieldW, l.fieldH, 8 * (W/CW), C.fieldBg);
-    // border
-    ctx.strokeStyle = focused ? C.fieldFocus : C.fieldBorder;
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(fx + 1, fy + 1, l.fieldW - 2, l.fieldH - 2);
-    // value
-    ctx.font = Math.round(14 * W / CW) + "px sans-serif";
-    ctx.fillStyle = value ? C.txt : C.ph;
-    ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    var display = isPwd ? "\u25CF".repeat(pwdChars.length) : value;
-    var phText = isPwd ? "\u2022\u2022\u2022\u2022\u2022\u2022" : "\u70b9\u51fb\u8f93\u5165...";
-    ctx.fillText(value || focused ? (display || phText) : phText, fx + 14 * (W/CW), fy + l.fieldH / 2);
-    // cursor
-    if (focused && cursorBlink) {
-      var tw = ctx.measureText(display).width;
-      ctx.fillStyle = C.fieldFocus;
-      ctx.fillRect(fx + 16 * (W/CW) + tw, fy + 10 * (W/CW), 2 * (W/CW), l.fieldH - 20 * (W/CW));
-    }
-    return { x: fx, y: fy, w: l.fieldW, h: l.fieldH };
-  }
-
-  function drawError(l) {
-    if (!errMsg) return;
-    ctx.font = Math.round(12.5 * W / CW) + "px sans-serif";
-    ctx.fillStyle = C.err;
-    ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText(errMsg, W / 2, l.footY - 4 * (W/CW));
-  }
-
-  function drawFoot(l) {
-    ctx.font = Math.round(10.5 * W / CW) + "px sans-serif";
-    ctx.fillStyle = C.foot;
-    ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillText("YC Console \u00b7 Internal Only", W / 2, l.footY + 18 * (W/CW));
-  }
-
-  function drawSpinner(l) {
-    var cx = W / 2, cy = l.btnY + l.btnH / 2, r = 12 * (W/CW);
-    var t = Date.now() / 400;
-    ctx.save();
-    ctx.translate(cx, cy); ctx.rotate(t);
-    for (var i = 0; i < 8; i++) {
-      ctx.rotate(Math.PI / 4);
-      ctx.beginPath(); ctx.moveTo(r - 5 * (W/CW), 0); ctx.lineTo(r, 0);
-      ctx.strokeStyle = "rgba(59,130,246," + (0.3 + 0.7 * i / 8) + ")";
-      ctx.lineWidth = 3 * (W/CW); ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  // --- 工具绘制函数 ---
-  function roundRect(x, y, w, h, r, fill) {
+  function fillRound(x, y, w, h, r, color) {
     if (r > h / 2) r = h / 2;
     if (r > w / 2) r = w / 2;
     ctx.beginPath();
     ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
     ctx.closePath();
-    ctx.fillStyle = fill; ctx.fill();
+    ctx.fillStyle = color;
+    ctx.fill();
   }
 
-  // --- 主渲染 ---
-  var lastFieldHit = null;
-  function render() {
-    ctx.clearRect(0, 0, W, H);
-    drawBg();
-    var l = layout();
-    drawCard(l);
-    drawLogo(l);
-    drawSub(l);
+  function strokeRound(x, y, w, h, r) {
+    if (r > h / 2) r = h / 2;
+    if (r > w / 2) r = w / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+    ctx.stroke();
+  }
 
-    if (S === 0) {
-      // 初始状态：只显示按钮
-      drawButton(l, "\u8fdb \u5165", false);
-      drawFoot(l);
+  function render() {
+    ctx.clearRect(0, 0, CW, CH);
+
+    // 背景
+    var bg = ctx.createLinearGradient(0, 0, 0, CH);
+    bg.addColorStop(0, "#0f172a");
+    bg.addColorStop(1, "#1d3a6b");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, CW, CH);
+
+    // 卡片
+    var cx = 20, cy = 40, cw = 320, ch = 360;
+    fillRound(cx, cy, cw, ch, 16, "#ffffff");
+
+    // Logo
+    ctx.font = "bold 26px sans-serif";
+    ctx.fillStyle = "#2563eb";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("YC", CW / 2, cy + 46);
+
+    // 副标题
+    ctx.font = "12px sans-serif";
+    ctx.fillStyle = "#64748b";
+    ctx.textBaseline = "top";
+    ctx.fillText("\u63a7\u5236\u53f0", CW / 2, cy + 78);
+
+    if (S === 0 || S === 4) {
+      // 按钮
+      var bx = (CW - 280) / 2, by = cy + 140, bw = 280, bh = 44;
+      fillRound(bx, by, bw, bh, 10, "#3b82f6");
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "15px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(S === 4 ? "\u91cd \u8bd5" : "\u8fdb \u5165", CW / 2, by + bh / 2);
+
+      // 错误信息
+      if (S === 4 && errMsg) {
+        ctx.font = "12.5px sans-serif";
+        ctx.fillStyle = "#dc2626";
+        ctx.textBaseline = "top";
+        ctx.fillText(errMsg, CW / 2, by + bh + 14);
+      }
+
+      // 底部文字
+      ctx.font = "10.5px sans-serif";
+      ctx.fillStyle = "#94a3b8";
+      ctx.fillText("YC Console \u00b7 Internal Only", CW / 2, cy + ch - 36);
+
     } else if (S === 1) {
-      // 用户名输入
-      lastFieldHit = drawField(l, "\u8d26\u53f7", uname, false, true);
-      drawFoot(l);
+      // 用户名字段
+      var fy = cy + 130;
+      ctx.font = "12px sans-serif";
+      ctx.fillStyle = "#1e293b";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("\u8d26\u53f7", cx + 20, fy - 6);
+
+      var fx = cx + 20, fw = cw - 40, fh = 42;
+      fillRound(fx, fy, fw, fh, 8, "#f8fafc");
+      ctx.strokeStyle = "#3b82f6";
+      ctx.lineWidth = 1.5;
+      strokeRound(fx + 1, fy + 1, fw - 2, fh - 2, 7);
+
+      ctx.font = "14px sans-serif";
+      ctx.fillStyle = uname ? "#1e293b" : "#94a3b8";
+      ctx.textBaseline = "middle";
+      var showUname = uname || "\u70b9\u51fb\u8f93\u5165...";
+      ctx.fillText(showUname, fx + 14, fy + fh / 2);
+
+      // 光标
+      if (cursorOn) {
+        var tw = ctx.measureText(uname).width;
+        ctx.fillStyle = "#3b82f6";
+        ctx.fillRect(fx + 16 + tw, fy + 10, 2, fh - 20);
+      }
+
+      // 底部提示
+      ctx.font = "10.5px sans-serif";
+      ctx.fillStyle = "#94a3b8";
+      ctx.textBaseline = "top";
+      ctx.textAlign = "center";
+      ctx.fillText("Enter \u786e\u8ba4 / Esc \u8fd4\u56de", CW / 2, fy + fh + 18);
+
     } else if (S === 2) {
-      // 密码输入
-      lastFieldHit = drawField(l, "\u51ed\u8bc1", "", true, true);
-      drawFoot(l);
+      // 密码字段
+      var fy2 = cy + 130;
+      ctx.font = "12px sans-serif";
+      ctx.fillStyle = "#1e293b";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("\u51ed\u8bc1", cx + 20, fy2 - 6);
+
+      var fx2 = cx + 20, fw2 = cw - 40, fh2 = 42;
+      fillRound(fx2, fy2, fw2, fh2, 8, "#f8fafc");
+      ctx.strokeStyle = "#3b82f6";
+      ctx.lineWidth = 1.5;
+      strokeRound(fx2 + 1, fy2 + 1, fw2 - 2, fh2 - 2, 7);
+
+      ctx.font = "14px monospace";
+      ctx.fillStyle = pwdChars.length ? "#1e293b" : "#94a3b8";
+      ctx.textBaseline = "middle";
+      var dots = "\u25cf".repeat(pwdChars.length);
+      ctx.fillText(dots || "\u2022\u2022\u2022\u2022\u2022\u2022", fx2 + 14, fy2 + fh2 / 2);
+
+      // 光标
+      if (cursorOn) {
+        var tw2 = ctx.measureText(dots).width;
+        ctx.fillStyle = "#3b82f6";
+        ctx.fillRect(fx2 + 16 + tw2, fy2 + 10, 2, fh2 - 20);
+      }
+
+      // 底部提示
+      ctx.font = "10.5px sans-serif";
+      ctx.fillStyle = "#94a3b8";
+      ctx.textBaseline = "top";
+      ctx.textAlign = "center";
+      ctx.fillText("Enter \u767b\u5f55 / Esc \u8fd4\u56de", CW / 2, fy2 + fh2 + 18);
+
     } else if (S === 3) {
-      // 提交中
-      drawSpinner(l);
-      ctx.font = Math.round(13 * W / CW) + "px sans-serif";
-      ctx.fillStyle = C.sub;
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText("\u9a8c\u8bc1\u4e2d...", W / 2, l.btnY + l.btnH / 2 + 35 * (W/CW));
-    } else if (S === 4) {
-      // 错误状态：回到初始+显示错误
-      drawButton(l, "\u91cd\u8bd5", false);
-      drawError(l);
-      drawFoot(l);
+      // 提交中 spinner
+      var spCx = CW / 2, spCy = cy + 162, spR = 12;
+      var t = Date.now() / 400;
+      ctx.save();
+      ctx.translate(spCx, spCy);
+      ctx.rotate(t);
+      for (var i = 0; i < 8; i++) {
+        ctx.rotate(Math.PI / 4);
+        ctx.beginPath();
+        ctx.moveTo(spR - 5, 0);
+        ctx.lineTo(spR, 0);
+        ctx.strokeStyle = "rgba(59,130,246," + (0.3 + 0.7 * i / 8) + ")";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      ctx.font = "13px sans-serif";
+      ctx.fillStyle = "#64748b";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("\u9a8c\u8bc1\u4e2d...", spCy + 35);
     }
   }
 
-  // 光标闪烁
   function startCursor() {
     stopCursor();
     cursorTimer = setInterval(function () {
-      cursorBlink = !cursorBlink; render();
+      cursorOn = !cursorOn;
+      render();
     }, 520);
   }
+
   function stopCursor() {
     if (cursorTimer) { clearInterval(cursorTimer); cursorTimer = null; }
-    cursorBlink = true;
+    cursorOn = true;
   }
 
-  // --- 事件处理 ---
-
-  // 点击检测
-  var btnHover = false;
-  cv.addEventListener("mousemove", function (e) {
-    var r = cv.getBoundingClientRect();
-    var mx = e.clientX - r.left, my = e.clientY - r.top;
-    var l = layout();
-    var bx = (W - l.btnW) / 2, by = l.btnY;
-
-    if ((S === 0 || S === 4) &&
-        mx >= bx && mx <= bx + l.btnW && my >= by && my <= by + l.btnH) {
-      if (!btnHover) { btnHover = true; render(); }
-      cv.style.cursor = "pointer";
-    } else {
-      if (btnHover) { btnHover = false; render(); }
-      cv.style.cursor = S === 1 || S === 2 ? "text" : "default";
-    }
-  });
+  // 点击检测辅助函数
+  function hitBtn(mx, my) {
+    var bx = (CW - 280) / 2, by = 80 + 140; // cy=80 in render... wait cy=40
+    by = 40 + 140;
+    return mx >= bx && mx <= bx + 280 && my >= by && my <= by + 44;
+  }
 
   cv.addEventListener("click", function (e) {
     var r = cv.getBoundingClientRect();
-    var mx = e.clientX - r.left, my = e.clientY - r.top;
-    var l = layout();
-    var bx = (W - l.btnW) / 2, by = l.btnY;
+    var mx = (e.clientX - r.left) * (CW / r.width);
+    var my = (e.clientY - r.top) * (CH / r.height);
 
     if (S === 0 || S === 4) {
-      // 点击进入按钮
-      if (mx >= bx && mx <= bx + l.btnW && my >= by && my <= by + l.btnH) {
-        S = 1; uname = ""; errMsg = ""; startCursor(); render();
-        cv.focus();
+      var bx = (CW - 280) / 2, by = 40 + 140;
+      if (mx >= bx && mx <= bx + 280 && my >= by && my <= by + 44) {
+        S = 1; uname = ""; errMsg = ""; startCursor(); render(); cv.focus();
       }
-    } else if (S === 1) {
-      // 用户名阶段点击任意处聚焦（canvas 已 focus）
-      // 保持当前状态
-    } else if (S === 2) {
-      // 密码阶段
     }
   });
 
-  // 触摸支持
   cv.addEventListener("touchend", function (e) {
     e.preventDefault();
     var t = e.changedTouches[0];
     var r = cv.getBoundingClientRect();
-    var mx = t.clientX - r.left, my = t.clientY - r.top;
-    var l = layout();
-    var bx = (W - l.btnW) / 2, by = l.btnY;
-
-    if (S === 0 || S === 4) {
-      if (mx >= bx && mx <= bx + l.btnW && my >= by && my <= by + l.btnH) {
-        S = 1; uname = ""; errMsg = ""; startCursor(); render();
-        cv.focus();
-      }
+    var mx = (t.clientX - r.left) * (CW / r.width);
+    var my = (t.clientY - r.top) * (CH / r.height);
+    var bx = (CW - 280) / 2, by = 40 + 140;
+    if ((S === 0 || S === 4) && mx >= bx && mx <= bx + 280 && my >= by && my <= by + 44) {
+      S = 1; uname = ""; errMsg = ""; startCursor(); render(); cv.focus();
     }
   }, { passive: false });
 
-  // 键盘输入（核心：所有文字输入走这里）
   cv.addEventListener("keydown", function (e) {
     if (S === 1) {
-      // 用户名输入
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (uname.trim().length > 0) { S = 2; pwdChars = []; render(); }
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault(); S = 0; stopCursor(); render(); return;
-      }
-      if (e.key === "Backspace") {
-        e.preventDefault(); uname = uname.slice(0, -1); render(); return;
-      }
+      if (e.key === "Enter") { e.preventDefault(); if (uname.trim()) { S = 2; pwdChars = []; stopCursor(); startCursor(); render(); } return; }
+      if (e.key === "Escape") { e.preventDefault(); S = 0; stopCursor(); render(); return; }
+      if (e.key === "Backspace") { e.preventDefault(); uname = uname.slice(0, -1); render(); return; }
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
-        // 允许字母、数字、下划线、点、@、-
-        if (/[\w.@\-]/.test(e.key)) {
-          e.preventDefault(); uname += e.key; render();
-        }
+        if (/[\w.@\-]/.test(e.key)) { e.preventDefault(); uname += e.key; render(); }
       }
     } else if (S === 2) {
-      // 密码输入
-      if (e.key === "Enter") {
-        e.preventDefault();
-        doLogin(uname.trim(), pwdChars.join(""));
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault(); S = 1; render(); return;
-      }
-      if (e.key === "Backspace") {
-        e.preventDefault(); pwdChars.pop(); render(); return;
-      }
+      if (e.key === "Enter") { e.preventDefault(); doLogin(uname.trim(), pwdChars.join("")); return; }
+      if (e.key === "Escape") { e.preventDefault(); S = 1; stopCursor(); startCursor(); render(); return; }
+      if (e.key === "Backspace") { e.preventDefault(); pwdChars.pop(); render(); return; }
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
         e.preventDefault(); pwdChars.push(e.key); render();
       }
     }
   });
 
-  // 组合输入法（IME）支持
+  // IME 支持
   var composing = false;
   cv.addEventListener("compositionstart", function () { composing = true; });
   cv.addEventListener("compositionend", function (e) {
@@ -335,15 +280,11 @@
     else if (S === 2 && e.data) { pwdChars.push.apply(pwdChars, e.data.split("")); render(); }
   });
 
-  // 让 canvas 可获得焦点
   cv.setAttribute("tabindex", "0");
-
-  // --- 认证逻辑 ---
 
   async function doLogin(user, pass) {
     if (!user || !pass) { errMsg = "\u8bf7\u586b\u5199\u5b8c\u6574"; S = 4; stopCursor(); render(); return; }
     S = 3; stopCursor(); render();
-
     try {
       var res = await fetch(API + "/admin/auth/login", {
         method: "POST",
@@ -352,39 +293,32 @@
       });
       var data = await res.json();
       if (!res.ok) throw new Error(data.detail || "\u767b\u5931\u5931\u8d25(" + res.status + ")");
-
       token = data.token;
       staff = data.staff;
       localStorage.setItem(LS_TOKEN, token);
       localStorage.setItem(LS_STAFF, JSON.stringify(staff));
-
-      // 登录成功 → 切换到 DOM 应用
       enterAppDOM();
     } catch (err) {
       errMsg = err.message; S = 4; render();
     }
   }
 
-  // --- 成功后切换到 DOM 应用 ---
   function enterAppDOM() {
-    // 隐藏 canvas，构建完整 DOM 应用
     cv.style.display = "none";
     buildDOMApp();
   }
 
-  // ═══════════════════════════════════════════
-  // DOM 应用部分（登录成功后才存在）
-  // ═══════════════════════════════════════════
+  /* ═══ DOM 应用（登录成功后） ═══ */
 
   let token = localStorage.getItem(LS_TOKEN);
   let staff = null;
   try { staff = JSON.parse(localStorage.getItem(LS_STAFF) || "null"); } catch (e) {}
 
   var NAV = [
-    { key: "dashboard", label: "\u8fd0\u8425\u770b\u677f", ico: "\u25A6", perm: "dashboard:view", crumb: "\u8fd0\u8425\u770b\u677f" },
+    { key: "dashboard", label: "\u8fd0\u8425\u770c\u677f", ico: "\u25A6", perm: "dashboard:view", crumb: "\u8fd0\u8425\u770c\u677f" },
     { key: "users", label: "\u7528\u6237\u7ba1\u7406", ico: "\uD83D\uDC64", perm: "user:view", crumb: "\u7528\u6237\u7ba1\u7406" },
     { key: "invites", label: "\u9080\u8bf7\u7801", ico: "\u2709", perm: "invite:view", crumb: "\u9080\u8bf7\u7801\u7ba1\u7406" },
-    { key: "leads", label: "\u5546\u52a1\u7ebf索", ico: "\uD83D\uDCBC", perm: "lead:view", crumb: "\u5546\u52a1\u7ebf索" },
+    { key: "leads", label: "\u5546\u52a1\u7ebf\u7d22", ico: "\uD83D\uDCBC", perm: "lead:view", crumb: "\u5546\u52a1\u7ebf\u7d22" },
     { key: "intake", label: "\u5165\u9a7b\u5ba1\u6838", ico: "\uD83D\uDCDD", perm: "intake:view", crumb: "\u827a\u4eba\u5165\u9a7b\u5ba1\u6838" },
     { key: "pricing", label: "\u53cc\u76f2\u64cb\u5408", ico: "\u2696", perm: "pricing:view", crumb: "\u53cc\u76f2\u5b9a\u4ef7\u64cb\u5408" },
     { key: "staff", label: "\u5458\u5de5\u7ba1\u7406", ico: "\u26DF", perm: "staff:view", crumb: "\u5458\u5de5\u7ba1\u7406" },
@@ -418,7 +352,7 @@
   function closeModal(){$("#modal-layer").hidden=true;$("#modal-card").innerHTML="";}
   function badge(text,cls){return '<span class="badge '+(cls||'')+'">'+(text==null?'\u2014':text)+'</span>';}
   function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]);});}
-  function kv(k,v){return "<div class='k'>"+k+"</div><div class='v'>"+v+"</div>";}
+  function kv(k,v){return "<div class='k'>"+k+"</div><div class='v'>"+v+"</div>";"}
   function field(label,html){return "<div class='field'><label>"+label+"</label>"+html+"</div>";}
 
   function sideLabel(s){return s==="brand"? "\u54c1\u724c\u65b9":(s==="artist"? "\u827a\u4eba\u65b9":(s||"\u2014"));}
@@ -455,7 +389,6 @@
     return '<div class="card"><div class="card-title">'+title+"</div>"+(rows||"<div class='muted'>\u2014</div>")+"</div>";
   }
 
-  // 构建完整 DOM 应用界面
   function buildDOMApp() {
     document.body.innerHTML =
       '<aside class="sidebar">'+
@@ -463,17 +396,15 @@
         '<nav id="side-nav" class="side-nav"></nav>'+
         '<div class="side-foot"><div class="staff-info"><div class="staff-name" id="staff-name">\u2014</div><div class="staff-role" id="staff-role">\u2014</div></div>'+
         '<button id="logout-btn" class="logout-btn">\u9000\u51fa</button></div></aside>'+
-      '<main class="content"><header class="topbar"><div class="crumb" id="crumb">\u8fd0\u8425\u770b\u677f</div>'+
+      '<main class="content"><header class="topbar"><div class="crumb" id="crumb">\u8fd0\u8425\u770c\u677f</div>'+
         '<div class="top-actions"><span class="env-tag">Production</span></div></header>'+
         '<section id="page" class="page"></section></main>'+
       '<div id="modal-layer" class="modal-layer" hidden><div class="modal-card" id="modal-card"></div></div>'+
       '<div id="toast" class="toast" hidden></div>';
-
     loadDOMStyles();
     initDOMApp();
   }
 
-  // 注入应用 CSS
   function loadDOMStyles() {
     var css = document.createElement("style");
     css.textContent = (
@@ -549,11 +480,9 @@
   function initDOMApp() {
     $("#logout-btn").addEventListener("click", function(){doDOMLogout();});
     $("#modal-layer").addEventListener("click",function(e){if(e.target.id==="modal-layer")closeModal();});
-
     renderNav();
     var hash = location.hash.replace("#/","") || "dashboard";
     navigate(hash);
-
     window.addEventListener("hashchange", function(){
       if(staff) navigate(location.hash.replace("#/",""));
     });
@@ -605,7 +534,7 @@
       var u=d.users,l=d.leads,it=d.intakes,iv=d.invites,pr=d.pricing;
       root.innerHTML=
         '<div class="metrics">'+
-          metric(u.total,"\u6ce8\u518c\u7528\u6237","\u4eca\u65e5\u65b0\u589e <b>"+u.today_new+"</b>","\u5df2\u8ba4\u8bc1 <b>"+u.verified+"</b>")+
+          metric(u.total,"\u6ce8\u518c\u7528\u6237","\u4eca\u65e0\u65b0 <b>"+u.today_new+"</b>","\u5df2\u8ba4\u8bc1 <b>"+u.verified+"</b>")+
           metric(l.total,"\u5546\u52a1\u7ebf\u7d22","\u5f85\u5904\u7406 <b>"+(l.dist.pending||0)+"</b>","\u672a\u5206\u914d <b>"+l.unassigned+"</b>")+
           metric(it.total,"\u5165\u9a7b\u7533\u8bf7","\u5f85\u5ba1 <b>"+(it.dist.pending_review||0)+"</b>","\u5df2\u901a\u8fc7 <b>"+(it.dist.approved||0)+"</b>")+
           metric(iv.total,"\u9080\u8bf7\u7801","\u6d3b\u8dc3 <b>"+iv.active+"</b>")+
@@ -625,7 +554,7 @@
   async function loadAudit(box){
     try{
       var a=await api("/admin/dashboard/audit?limit=30");
-      if(!a.items.length){box.innerHTML='<div class="empty\">\u6682\u65e0\u8bb0\u5f55</div>';return;}
+      if(!a.items.length){box.innerHTML='<div class="empty">\u6682\u65e0\u8bb0\u5f55</div>';return;}
       var rows=a.items.map(function(r){
         return "<tr><td>"+fmtTime(r.created_at)+"</td><td>"+esc(r.staff_name)+"</td><td>"+esc(r.action)+
         "</td><td>"+esc(r.target_type)+(r.target_id?"#"+esc(r.target_id):"")+"</td><td class='muted'>"+(r.ip||"\u2014")+"</td></tr>";
@@ -642,7 +571,7 @@
         '<input id="u-q" placeholder="\u624b\u673a\u53f7/\u6635\u79f0/\u516c\u53f8/\u59d3\u540d" style="width:240px">'+
         '<select id="u-plan"><option value="">\u5168\u90e8\u5957\u9910</option><option>free</option><option>personal</option><option>professional</option><option>enterprise</option></select>'+
         '<select id="u-verified"><option value="">\u8ba4\u8bc1\u4e0d\u9650</option><option value="1">\u5df2\u8ba4\u8bc1</option><option value="0">\u672a\u8ba4\u8bc1</option></select>'+
-        '<select id="u-active"><option value="">\u72b6\u6001\u4e0d\u9650</option><option value="1">\u542f\u7528</option><option value="0">\u505c\u7528</option></select>'+
+        '<select id="u-active"><option value="">\u72b6\u6001\u4e0d\u9650</option><option value="1">\u542f\u7528</option><option value="0">\u0501\u7528</option></select>'+
         '<button class="btn-primary btn" id="u-search">\u67e5\u8be2</button>'+
       '</div>'+
       '<div id="u-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div>';
@@ -670,7 +599,7 @@
           "<td>"+u.id+"</td><td>"+esc(u.phone||"\u2014")+"</td><td>"+esc(u.nickname||"\u2014")+"</td>"+
           "<td>"+esc(u.company||"\u2014")+"</td><td>"+badge(u.user_type,"b-"+u.user_type)+"</td>"+
           "<td>"+(u.verified?badge("\u5df2\u8ba4\u8bc1","b-yes"):badge("\u672a\u8ba4\u8bc1","b-no"))+"</td>"+
-          "<td>"+(u.is_active?badge("\u542f\u7528","b-active"):badge("\u505c\u7528","b-inactive"))+"</td>"+
+          "<td>"+(u.is_active?badge("\u542f\u7528","b-active"):badge("\u0501\u7528","b-inactive"))+"</td>"+
           "<td class='muted'>"+fmtTime(u.created_at)+"</td></tr>";
         }).join("");
         box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u624b\u673a\u53f7</th><th>\u6635\u79f0</th><th>\u516c\u53f8</th><th>\u5957\u9910</th><th>\u8ba4\u8bc1</th><th>\u72b6\u6001</th><th>\u6ce8\u518c\u65f6\u95f4</th></tr></thead><tbody>'+rows+"</tbody></table></div>"+pager(d.total,d.page,d.page_size);
@@ -679,20 +608,19 @@
       }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
     }
   }
-
   async function openUserDetail(id){
     var d=await api("/admin/users/"+id);
     var canEdit=hasPerm("user:edit");
     var html='<h3>\u7528\u6237\u8be6\u60c5 #'+d.id+"</h3><div class='kv'>"+
       kv("\u624b\u673a\u53f7",esc(d.phone))+kv("\u6635\u79f0",esc(d.nickname))+kv("\u516c\u53f8",esc(d.company))+
-      kv("\u89d2\u8272",esc(d.role))+kv("\u5957\u9910",badge(d.user_type,"b-"+d.user_type))+
+      kv("\u89d2\u8272",esc(d.role))+kv("\u595套\u9910",badge(d.user_type,"b-"+d.user_type))+
       kv("\u5b9e\u540d",(d.verified?badge("\u5df2\u8ba4\u8bc1","b-yes"):badge("\u672a\u8ba4\u8bc1","b-no"))+(d.verify_type?" ("+esc(d.verify_type)+")":""))+
-      kv("\u771f\u5b9e\u59d3\u540d",esc(d.real_name))+kv("\u72b6\u6001",d.is_active?"\u542f\u7528":"\u505c\u7528")+
+      kv("\u771f\u5b9e\u59d3\u540d",esc(d.real_name))+kv("\u72b6\u6001",d.is_active?"\u542f\u7528":"\u0501\u7528")+
       kv("\u9080\u8bf7\u6765\u6e90",esc(d.invited_by||"\u2014"))+kv("\u6ce8\u518c",fmtTime(d.created_at))+kv("\u6700\u8fd1\u767b\u5f55",fmtTime(d.last_login_at))+
       "</div>";
     if(canEdit){
-      html+='<div class="modal-actions"><button class="btn" id="u-plan-btn">\u6539\u5957\u9910</button>'+
-        '<button class="btn" id="u-status-btn">'+(d.is_active?"\u505c\u7528\u8d26\u53f7":"\u542f\u7528\u8d26\u53f7")+"</button>"+
+      html+='<div class="modal-actions"><button class="btn" id="u-plan-btn">\u6539\u595套\u9910</button>'+
+        '<button class="btn" id="u-status-btn">'+(d.is_active?"\u0501\u7528\u8d26\u53f7":"\u542f\u7528\u8d26\u53f7")+"</button>"+
         '<button class="btn" id="u-verify-btn">'+(d.verified?"\u53d6\u6d88\u8ba4\u8bc1":"\u6807\u8bb0\u8ba4\u8bc1")+"</button></div>";
     }
     html+='<div class="modal-actions"><button class="btn" id="u-close">\u5173\u95ed</button></div>';
@@ -700,15 +628,15 @@
     $("#u-close").onclick=closeModal;
     if(canEdit){
       $("#u-plan-btn").onclick=async function(){
-        var t=prompt("\u6539\u4e3a\u5957\u9910(free/personal/professional/enterprise)\uff1a",d.user_type);
+        var t=prompt("\u6539\u4e3a\u595套\u9910(free/personal/professional/enterprise)\uff1a",d.user_type);
         if(!t)return;
-        try{await api("/admin/users/"+id+"/plan",{method:"POST",body:{user_type:t.trim()}});toast("\u5df2\u66f4\u65b0\u5957\u9910","ok");closeModal();renderUsers($("#page"));}catch(e){toast(e.message,"err");}
+        try{await api("/admin/users/"+id+"/plan",{method:"POST",body:{user_type:t.trim()}});toast("\u5df2\u66f4\u65b0\u595套\u9910","ok");closeModal();renderUsers($("#page"));}catch(e){toast(e.message,"err");}
       };
       $("#u-status-btn").onclick=async function(){
         try{await api("/admin/users/"+id+"/status",{method:"POST",body:{is_active:!d.is_active}});toast("\u5df2\u66f4\u65b0\u72b6\u6001","ok");closeModal();renderUsers($("#page"));}catch(e){toast(e.message,"err");}
       };
       $("#u-verify-btn").onclick=async function(){
-        try{await api("/admin/users/"+id+"/verify",{method:"POST",body:{verified:!d.verified,verify_type:"company"}});toast("\u5df2\u66f4\u65b0\u8ba4\u8bc1","ok");closeModal();renderUsers($("#page"));}catch(e){toast(e.message,"err");}
+        try{await api("/admin/users/"+id+"/verify",{method:"POST",body:{verified:!d.verified,verify_type:"company"});toast("\u5df2\u66f4\u65b0\u8ba4\u8bc1","ok");closeModal();renderUsers($("#page"));}catch(e){toast(e.message,"err");}
       };
     }
   }
@@ -717,7 +645,7 @@
   async function renderInvites(root){
     var canCreate=hasPerm("invite:create");
     root.innerHTML=
-      (canCreate?'<div class="toolbar"><button class="btn-primary btn" id="i-gen">+ \u751f\u6210\u9080\u8bf7\u7801</button></div>':"")+
+      (canCreate?'<div class="toolbar"><button class="btn-primary btn" id="i-gen">+ \u751f\u6210\u9080\u8bf7\u7801</button></div':"")+
       '<div id="i-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div>';
     if(canCreate)$("#i-gen").onclick=openGenInvite;
     loadInvites();
@@ -737,10 +665,10 @@
         var rows=d.items.map(function(i){
           return "<tr data-id='"+i.id+"'>"+
           "<td><code>"+esc(i.code)+"</code></td><td>"+esc(i.note||"\u2014")+"</td>"+
-          "<td>"+(i.is_active?badge("\u542f\u7528","b-active"):badge("\u505c\u7528","b-inactive"))+"</td>"+
+          "<td>"+(i.is_active?badge("\u542f\u7528","b-active"):badge("\u0501\u7528","b-inactive"))+"</td>"+
           "<td>"+i.used_count+" / "+i.max_uses+"</td>"+
           "<td class='muted'>"+fmtTime(i.valid_until)+"</td>"+
-          (canRevoke?"<td><button class='btn btn-sm' data-toggle='"+i.id+"'>"+(i.is_active?"\u505c\u7528":"\u542f\u7528")+"</button></td>":"<td></td>")+
+          (canRevoke?"<td><button class='btn btn-sm' data-toggle='"+i.id+"'>"+(i.is_active?"\u0501\u7528":"\u542f\u7528")+"</button></td>":"<td></td>")+
           "</tr>";
         }).join("");
         box.innerHTML=info+'<div class="table-wrap"><table><thead><tr><th>\u9080\u8bf7\u7801</th><th>\u5907\u6ce8</th><th>\u72b6\u6001</th><th>\u4f7f\u7528</th><th>\u6709\u6548\u671f</th><th>\u64cd\u4f5c</th></tr></thead><tbody>'+rows+"</tbody></table></div>";
@@ -794,7 +722,7 @@
           "<td>"+esc(l.role||"\u2014")+"</td><td>"+badge(l.status,"b-"+l.status)+"</td><td>"+(l.assignee?esc(l.assignate):"<span class='muted'>\u672a\u5206\u914d</span>")+"</td>"+
           "<td class='muted'>"+fmtTime(l.created_at)+"</td></tr>";
         }).join("");
-        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u516c\u53f8</th><th>\u8054\u7cfb\u4eba</th><th>\u89d2\u8272</th><th>\u72b6\u6001</th><th>\u8d1f\u8d23\u4eba</th><th>\u63d0\u4ea4\u65f6\u95f4</th></tr></thead><tbody>'+rows+"</tbody></table></div>"+pager(d.total,d.page,d.page_size);
+        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u516c\u53f8</th><th>\u8054\u7cfb\u4eba</th><th>\u89d2\u8272</th><th>\u72b6\u6001</th><th>\u8d1d\u8d23\u4eba</th><th>\u63d0\u4ea4\u65f6\u95f4</th></tr></thead><tbody>'+rows+"</tbody></table></div>"+pager(d.total,d.page,d.page_size);
         box.querySelectorAll("tbody tr").forEach(function(tr){tr.onclick=function(){openLeadDetail(tr.dataset.id);};});
         bindPager(d,loadLeads);
       }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
@@ -806,20 +734,20 @@
     var html="<h3>\u7ebf\u7d22\u8be6\u60c5 #"+d.id+"</h3><div class='kv'>"+
       kv("\u516c\u53f8",esc(d.company))+kv("\u8054\u7cfb\u4eba",esc(d.contact_name))+kv("\u89d2\u8272",esc(d.role))+
       kv("\u7535\u8bdd",esc(d.contact_phone||"\u2014"))+kv("\u90ae\u7bb1",esc(d.contact_email||"\u2014"))+kv("\u5fae\u4fe1",esc(d.contact_wechat||"\u2014"))+
-      kv("\u610f\u5411\u5957\u9910",badge(d.plan_interest,"b-"+d.plan_interest))+kv("\u4f7f\u7528\u573a\u666f",esc(d.use_case||"\u2014"))+
+      kv("\u610f\u5411\u595套\u9910",badge(d.plan_interest,"b-"+d.plan_interest))+kv("\u4f7c\u7528\u573a\u666f",esc(d.use_case||"\u2014"))+
       kv("\u7559\u8a00",esc(d.message||"\u2014"))+kv("\u72b6\u6001",badge(d.status,"b-"+d.status))+
-      kv("\u8d1f\u8d23\u4eba",esc(d.assignee||"\u672a\u5206\u914d"))+kv("\u5907\u6ce8",esc(d.admin_note||"\u2014"))+kv("\u63d0\u4ea4",fmtTime(d.created_at))+
+      kv("\u8d1d\u8d23\u4eba",esc(d.assignee)||"\u672a\u5206\u914d")+kv("\u5907\u6ce8",esc(d.admin_note||"\u2014"))+kv("\u63d0\u4ea4",fmtTime(d.created_at))+
       (d.user?kv("\u5173\u8054\u7528\u6237","#"+d.user.id+" "+esc(d.phone)+" ("+badge(d.user.user_type,"b-"+d.user.user_type)+")"):"")+
       "</div>";
     var acts='<div class="modal-actions">';
     if(canAssign) acts+='<button class="btn" id="ld-assign">\u5206\u914d/\u8ba4\u9886</button>';
     if(canEdit) acts+='<button class="btn" id="ld-note">\u7f16\u8f91\u5907\u6ce8</button><button class="btn" id="ld-status">\u6539\u72b6\u6001</button>';
-    if(canConvert) acts+='<button class="btn-ok btn" id="ld-convert">\u8f6c\u5316\u4e3a\u5f00\u901a\u5957\u9910</button>';
+    if(canConvert) acts+='<button class="btn-ok btn" id="ld-convert">\u8f6c\u5316\u4e3a\u5f00\u901a\u595套\u9910</button>';
     acts+='<button class="btn" id="ld-close">\u5173\u95ed</button></div>';
     openModal(html+acts);
     $("#ld-close").onclick=closeModal;
     if(canAssign)$("#ld-assign").onclick=async function(){
-      var a=prompt("\u5206\u914d\u8d1f\u8d23\u4eba\u7528\u6237\u540d(\u7559\u7a7a=\u53d6\u6d88\u5206\u914d)\uff1a",d.assignee||"");
+      var a=prompt("\u5206\u914d\u8d1d\u8d23\u4eba\u7528\u6237\u540d(\u7559\u7a7a=\u53d6\u6d88\u5206\u914d)\uff1a",d.assignee||"");
       if(a===null)return;
       try{await api("/admin/leads/"+id+"/assign",{method:"POST",body:{assignee:a.trim()}});toast("\u5df2\u5206\u914d","ok");closeModal();renderLeads($("#page"));}catch(e){toast(e.message,"err");}
     };
@@ -832,11 +760,11 @@
       $("#ld-status").onclick=async function(){
         var s=prompt("\u72b6\u6001(pending/contacted/converted/rejected)\uff1a",d.status);
         if(!s)return;
-        try{await api("/admin/leads/"+id+"/status",{method:"POST",body:{status:s.trim()}});toast("\u5df2\u66f4\u65b0","ok");closeModal();renderLeads($("#page"));}catch(e){toast(e.message,"err");}
+        try{await api("/admin/leads/"+id+"/status",{method:"POST",body:{status:s.trim()}});toast("\u5df2\u66f4\u65b0\u72b6\u6001","ok");closeModal();renderLeads($("#page"));}catch(e){toast(e.message,"err");}
       };
     }
     if(canConvert)$("#ld-convert").onclick=async function(){
-      if(!confirm("\u786e\u8ba4\u8f6c\u5316\uff1f\u5c06\u628a\u5173\u8054\u7528\u6237\u8f6f\u8f6c\u4e3a "+(d.plan_interest||"professional")+" \u5957\u9910\u3002"))return;
+      if(confirm("\u786e\u8ba4\u8f6c\u5316\uff1f\u5c06\u628a\u5173\u8054\u7528\u6237\u8f6c\u4e3b "+(d.plan_interest||"professional")+" \u595套\u9910\u3002"))return;
       try{await api("/admin/leads/"+id+"/convert",{method:"POST",body:{}});toast("\u5df2\u8f6c\u5316","ok");closeModal();renderLeads($("#page"));}catch(e){toast(e.message,"err");}
     };
   }
@@ -870,7 +798,7 @@
   async function openIntakeDetail(id){
     var d=await api("/admin/intakes/"+id);
     var canReview=hasPerm("intake:review");
-    var html="<h3>\u5165\u9a7b\u7533\u8bf7 #"+d.id+(d.status!=="pending_review"?" \u00b7 "+badge(d.status,"b-"+d.status):"")+"</h3><div class='kv'>"+
+    var html="<h3>\u5165\u9a7b\u7533\u8bf7 #"+d.id+(d.status!=="pending_review?" \u00b7 "+badge(d.status,"b-"+d.status):"")+"</h3><div class='kv'>"+
       kv("\u827a\u4eba\u540d",esc(d.name))+kv("\u6027\u522b",esc(d.gender||"\u2014"))+kv("\u5e74\u9f84",d.age||"\u2014")+kv("\u751f\u65e5",esc(d.birthday||"\u2014"))+
       kv("\u7ecf\u7eaa\u516c\u53f8",esc(d.agency||"\u2014"))+kv("\u8d5b\u9053",esc(d.category||"\u2014"))+kv("\u5fae\u535a\u7c89\u4e1d",esc(d.weibo_fans||"\u2014"))+
       kv("\u6296\u97f3\u7c89\u4e1d",esc(d.douyin_fans||"\u2014"))+kv("\u4eba\u8bbe\u6807\u7b7e",esc(d.persona_tags||"\u2014"))+kv("\u8054\u7cfb\u65b9\u5f0f",esc(d.contact||"\u2014"))+
@@ -883,9 +811,9 @@
     $("#in-close").onclick=closeModal;
     if(canReview&&d.status==="pending_review"){
       var doReview=async function(decision){
-        var note=prompt(decision==="approved"?"\u901a\u8fc7\u5907\u6ce8(\u9009\u586b)\uff1a":"\u9a73\u56de\u7406\u7531\uff1a","");
+        var note=prompt(decision==="approved?"\u901a\u8fc7\u5907\u6ce8(\u9009\u586b)\uff1a":"\u9a73\u56de\u7406\u7531\uff1a","");
         if(note===null)return;
-        try{await api("/admin/intakes/"+id+"/review",{method:"POST",body:{decision,review_note:note}});toast("\u5df2"+(decision==="approved"?"\u901a\u8fc7":"\u9a73\u56de"),"ok");closeModal();renderIntake($("#page"));}catch(e){toast(e.message,"err");}
+        try{await api("/admin/intakes/"+id+"/review",{method:"POST",body:{decision,review_note:note}});toast("\u5df2"+(decision==="approved?"\u901a\u8fc7":"\u9a73\u56de"),"ok");closeModal();renderIntake($("#page"));}catch(e){toast(e.message,"err");}
       };
       $("#in-approve").onclick=function(){doReview("approved");};
       $("#in-reject").onclick=function(){doReview("rejected");};
@@ -899,8 +827,8 @@
     var canManage=hasPerm("staff:manage"),canPwd=hasPerm("self:password");
     root.innerHTML=
       '<div class="toolbar">'+
-        (canManage?'<button class="btn-primary btn" id="s-new">+ \u65b0\u5efa\u5458\u5de5</button>':"")+
-        (canPwd?'<button class="btn" id="s-pwd">\u4fee\u6539\u6211\u7684\u5bc6\u7801</button>':"")+
+        (canManage?'<button class="btn-primary btn" id="s-new">+ \u65b0\u5efa\u5458\u5de5</button':"")+
+        (canPwd?'<button class="btn" id="s-pwd">\u4fee\u6539\u6211\u7684\u5bc6\u7801</button':"")+
       '</div><div id="s-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div>';
     if(canManage)$("#s-new").onclick=openNewStaff;
     if(canPwd)$("#s-pwd").onclick=openChangePwd;
@@ -917,20 +845,20 @@
           var isMe=u.id===me,acts="";
           if(canManage){
             acts="<button class='btn btn-sm' data-role='"+u.id+"'"+(isMe?' disabled title='\u4e0d\u80fd\u4fee\u6539\u81ea\u5df1\u89d2\u8272'':"")+">\u6539\u89d2\u8272</button> "+
-              "<button class='btn btn-sm' data-status='"+u.id+"'"+(isMe?' disabled title='\u4e0d\u80fd\u505c\u7528\u81ea\u5df1'':"")+">"+(u.is_active?"\u505c\u7528":"\u542f\u7528")+"</button> "+
+              "<button class='btn btn-sm' data-status='"+u.id+"'"+(isMe?' disabled title='\u4e0d\u80fd\u0501\u7528\u81ea\u5df1'':"")+">"+(u.is_active?"\u0501\u7528":"\u542f\u7528")+"</button> "+
               "<button class='btn btn-sm' data-reset='"+u.id+"'>\u91cd\u7f6e\u5bc6\u7801</button>";
           }
           return "<tr data-id='"+u.id+"'>"+
             "<td>"+u.id+"</td><td>"+esc(u.username)+"</td><td>"+esc(u.real_name)+"</td>"+
             "<td>"+badge(u.role_label)+"</td>"+
-            "<td>"+(u.is_active?badge("\u542f\u7528","b-active"):badge("\u505c\u7528","b-inactive"))+"</td>"+
+            "<td>"+(u.is_active?badge("\u542f\u7528","b-active"):badge("\u0501\u7528","b-inactive"))+"</td>"+
             "<td class='muted'>"+fmtTime(u.created_at)+"</td><td class='muted'>"+fmtTime(u.last_login_at)+"</td>"+
             "<td class='nowrap'>"+(acts||"<span class='muted'>\u2014</span>")+"</td></tr>";
         }).join("");
         box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u8d26\u53f7</th><th>\u59d3\u540d</th><th>\u89d2\u8272</th><th>\u72b6\u6001</th><th>\u521b\u5efa</th><th>\u6700\u8fd1\u767b\u5f55</th><th>\u64cd\u4f5c</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
         if(canManage){
           box.querySelectorAll("[data-role]").forEach(function(b){b.onclick=function(){openEditRole(b.dataset.role);};});
-          box.querySelectorAll("[data-status]").forEach(function(b){b.onclick=function(){var deact=b.textContent.trim()==="\u505c\u7528";if(confirm("\u786e\u8ba4"+(deact?"\u505c\u7528":"\u542f\u7528")+"\u8be5\u5458\u5de5\u8d26\u53f7\uff1f"))toggleStatus(b.dataset.id,deact);};});
+          box.querySelectorAll("[data-status]").forEach(function(b){var deact=b.textContent.trim()==="\u0501\u7528";if(confirm("\u786e\u8ba4"+(deact?"\u0501\u7528":"\u542f\u7528")+"\u8be5\u5458\u5de5\u8d26\u53f7\uff1f"))toggleStatus(b.dataset.id,deact);};});
           box.querySelectorAll("[data-reset]").forEach(function(b){b.onclick=function(){openResetPwd(b.dataset.reset);};});
         }
       }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
@@ -941,7 +869,7 @@
       openModal(
         "<h3>\u65b0\u5efa\u5458\u5de5\u8d26\u53f7</h3>"+
         field("\u767b\u5f55\u7528\u6237\u540d(\u22653)",'<input id="n-user" placeholder="\u5982\uff1ali_ming">')+
-        field("\u521d\u59cb\u5bc6\u7801(\u22658\u4f4d)",'<input id="n-pwd" type="password" placeholder="\u81f3\u5c118\u4f4d">')+
+        field("\u521d\u59cb\u5bc6\u7801(\u22658\u4f4d)",'<input id="n-pwd" type="password" placeholder="\u81f3\u5c1184\u4f4d">')+
         field("\u771f\u5b9e\u59d3\u540d",'<input id="n-name" placeholder="\u5982\uff1a\u676e\u660e">')+
         field("\u89d2\u8272",'<select id="n-role">'+roleOpts+"</select>")+
         "<div class='modal-actions'><button class='btn' id='n-cancel'>\u53d6\u6d88</button><button class='btn-primary btn' id='n-ok'>\u521b\u5efa</button></div>"
@@ -970,14 +898,14 @@
 
     function toggleStatus(id,deactivate){
       api("/admin/staff/"+id,{method:"PUT",body:{is_active:!deactivate}})
-        .then(function(){toast("\u5df2"+(deactivate?"\u505c\u7528":"\u542f\u7528"),"ok");loadStaff();})
+        .then(function(){toast("\u5df2"+(deactivate?"\u0501\u7528":"\u542f\u7528"),"ok");loadStaff();})
         .catch(function(e){toast(e.message,"err");loadStaff();});
     }
 
     function openResetPwd(id){
       openModal(
         "<h3>\u91cd\u7f6e\u5bc6\u7801 #"+id+"</h3>"+
-        field("\u65b0\u5bc6\u7801(\u22658\u4f4d)",'<input id="rp-pwd" type="password" placeholder="\u81f3\u5c118\u4f4d">')+
+        field("\u65b0\u5bc6\u7801(\u22658\u4f4d)",'<input id="rp-pwd" type="password" placeholder="\u81f3\u5c1184\u4f4d">')+
         "<div class='modal-actions'><button class='btn' id='rp-cancel'>\u53d6\u6d88</button><button class='btn-primary btn' id='rp-ok'>\u91cd\u7f6e</button></div>"
       );
       $("#rp-cancel").onclick=closeModal;
@@ -1036,10 +964,10 @@
           "<td>"+r.id+"</td><td>"+badge(sideLabel(r.side))+"</td><td>"+esc(r.category||"\u2014")+"</td>"+
           "<td>"+esc(r.scenario||"\u2014")+"</td><td>"+badge(statusLabel(r.status),"b-"+r.status)+"</td>"+
           "<td>"+esc(r.artist_name_hint||"\u2014")+"</td>"+
-          "<td>"+(r.budget_range?("\u9884\u7b97 "+esc(r.budget_range)):(r.quote_range?("\u62a5\u4ef7 "+esc(r.quote_range)):"\u2014"))+"</td>"+
+          "<td>"+(r.budget_min_wan!=null?("\u9884\u7b97 "+Math.round(r.budget_min_wan)+"~"+Math.round(r.budget_max_wan)+"\u4e07"):(r.quote_min_wan!=null?("\u62a5\u4ef7 "+Math.round(r.quote_min_wan)+"~"+Math.round(r.quote_max_wan)+"\u4e07"):"\u2014"))+"</td>"+
           "<td class='muted'>"+fmtTime(r.created_at)+"</td></tr>";
         }).join("");
-        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u65b9\u5411</th><th>\u54c1\u7类</th><th>\u573a\u666f</th><th>\u72b6\u6001</th><th>\u533f\u540d\u827a\u4eba</th><th>\u91d1\u989d\u533a\u95f4</th><th>\u63d0\u4ea4\u65f6\u95f4</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+pager(d.total,d.page,d.page_size);
+        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u65b9\u5411</th><th>\u54c1\u7c7b</th><th>\u573a\u666f</th><th>\u72b6\u6001</th><th>\u533f\u540d\u827a\u4eba</th><th>\u91d1\u989d\u533a\u95f4</th><th>\u63d0\u4ea4\u65f6\u95f4</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+pager(d.total,d.page,d.page_size);
         box.querySelectorAll("tbody tr").forEach(function(tr){tr.onclick=function(){openRequestDetail(tr.dataset.id);};});
         bindPager(d,loadRequests);
       }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
@@ -1051,9 +979,9 @@
     var pct=function(x){return Math.round((x||0)*100)+"%";};
     return '<div class="kv">'+
       kv("\u9884\u7b97\u5951\u5408\u6743\u91cd",pct(w.budget_fit))+
-      kv("\u54c1\u7c7b\u5957\u5408\u6743\u91cd",pct(w.category_fit))+
-      kv("\u98ce\u9669\u5957\u5408\u6743\u91cd",pct(w.risk_fit))+
-      kv("\u5546\u4e1a\u5957\u5408\u6743\u91cd",pct(w.commercial_fit))+
+      kv("\u54c1\u7c7b\u5951\u5408\u6743\u91cd",pct(w.category_fit))+
+      kv("\u98ce\u9669\u5951\u5408\u6743\u91cd",pct(w.risk_fit))+
+      kv("\u5546\u4e1a\u5951\u5408\u6743\u91cd",pct(w.commercial_fit))+
       kv("\u6700\u4f4e\u5339\u914d\u9608\u503c",(th.min_match_pct!=null?th.min_match_pct:"\u2014")+"%")+
       kv("\u6700\u9ad8\u53ef\u63a5\u53d7\u98ce\u9669",th.max_risk_level||"\u4e0d\u9650\u5236")+
       kv("\u5f3a\u5236\u540c\u54c1\u7c7b",th.require_category?"\u662f":"\u5426")+
@@ -1072,7 +1000,7 @@
         "<p class='muted' style='margin-top:0'>\u6743\u91cd\u4f1a\u81ea\u52a8\u5f52\u4e00\u5316\u4e3a\u5408\u8ba1 100%\uff08\u586b\u5165 0~1 \u6216\u4efb\u610f\u6b63\u6570\uff09\u3002</p>"+
         field("\u9884\u7b97\u5951\u5408 (budget_fit)","<input id='cfg-budget' type='number' step='0.05' min='0' value='"+(w.budget_fit!=null?w.budget_fit:0)+"'>")+
         field("\u54c1\u7c7b\u5951\u5408 (category_fit)","<input id='cfg-cat' type='number' step='0.05' min='0' value='"+(w.category_fit!=null?w.category_fit:0)+"'>")+
-        field("\u98ce\u9669\u5951\u5408 (risk_fit)","<input id='cfg-risk' type='number' step='0.05' min='0' value="'+(w.risk_fit!=null?w.risk_fit:0)+"'>")+
+        field("\u98ce\u9669\u5951\u5408 (risk_fit)","<input id='cfg-risk' type='number' step='0.05' min='0' value='"+(w.risk_fit!=null?w.risk_fit:0)+"'>")+
         field("\u5546\u4e1a\u5951\u5408 (commercial_fit)","<input id='cfg-com' type='number' step='0.05' min='0' value '"+(w.commercial_fit!=null?w.commercial_fit:0)+"'>")+
         "<hr style='border:none;border-top:1px solid #e2e8f0;margin:16px 0'>"+
         field("\u6700\u4f4e\u5339\u914d\u9608\u503c (%)","<input id='cfg-min' type='number' step='1' min='0' max='100' value='"+(th.min_match_pct!=null?th.min_match_pct:20)+"'>")+
@@ -1119,13 +1047,9 @@
     openModal(html);$("#rd-close").onclick=closeModal;
   }
 
-  // ═══════════════════════════════════════════
-  // 启动入口
-  // ═══════════════════════════════════════════
-  window.addEventListener("resize", resize);
-  resize();
+  /* ═══ 启动 ═══ */
+  render();
 
-  // 如果已有有效凭证，直接进入 DOM 应用
   if (token && staff) {
     enterAppDOM();
   }
