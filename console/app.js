@@ -144,11 +144,19 @@
 
   var modal = { layer:$("modal-layer"),title:$("modal-title"),body:$("modal-body"),foot:$("modal-foot") };
   function openModal(title, html) {
-    modal.title.textContent = title; modal.body.innerHTML = html||""; modal.foot.innerHTML='<button id="modal-close">\u5173\u95ed</button>';
-    modal.layer.hidden=false; $("modal-close").onclick=closeModal;
+    if(!title&&!html)return;/* safety: never open empty modal */
+    modal.title.textContent = title||""; modal.body.innerHTML = html||""; modal.foot.innerHTML='<button id="modal-close" type="button">\u5173\u95ed</button>';
+    modal.layer.hidden=false;
   }
   function closeModal() { modal.layer.hidden=true; }
-  modal.layer.addEventListener("click",function(e){if(e.target.id==="modal-layer")closeModal();});
+  /* Event delegation: click backdrop or close button anywhere */
+  modal.layer.addEventListener("click",function(e){
+    if(e.target.id==="modal-layer"||e.target.id==="modal-close")closeModal();
+  });
+  /* ESC key closes modal */
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"&&!modal.layer.hidden)closeModal();
+  });
 
   function navigate(pageId) {
     document.querySelectorAll("#nav-list li").forEach(function(li){li.classList.toggle("active",li.dataset.id===pageId);});
