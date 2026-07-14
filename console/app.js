@@ -90,11 +90,17 @@
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
-  // ---------- 登录 / 登出 ----------
-  // 凭证由沙箱 iframe（opaque origin）采集后通过 postMessage 回传，父页面发起真实请求。
-  // 沙箱 iframe 内浏览器密码管理器/扩展不运行，从源头杜绝 autofill 白条注入。
+  // ═══════════════════════════════════════════
+  // V8 幽灵登录 —— 页面零可编辑元素初始态
+  // 用户点击「登录」后，JS 动态创建单字段分步模态。
+  // 整个页面加载时不存在任何 contenteditable/input/form，
+  // Chrome autofill 启发式引擎无目标可识别。
+  // ═══════════════════════════════════════════
+
+  /** 内部密码存储（不暴露到 DOM 文本节点） */
+  let _gpwd = [];
+
   async function doLogin(user, pass) {
-    const frame = document.getElementById("login-frame");
     try {
       if (!user || !pass) { throw new Error("请输入账号和密码"); }
       const res = await fetch(API + "/admin/auth/login", {
@@ -103,30 +109,141 @@
         body: JSON.stringify({ username: user, password: pass }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || ("登录失败(" + res.status + ")"));
-      }
+      if (!res.ok) throw new Error(data.detail || ("登录失败(" + res.status + ")"));
       token = data.token; staff = data.staff;
       localStorage.setItem(LS_TOKEN, token);
       localStorage.setItem(LS_STAFF, JSON.stringify(staff));
+      cleanupDyn(); // 销毁动态字段
       enterApp();
     } catch (err) {
-      // 错误回传给 iframe 内展示
-      if (frame && frame.contentWindow) {
-        frame.contentWindow.postMessage({ type: "YC_ERR", msg: err.message }, "*");
-      }
+      showGhostErr(err.message);
     }
   }
 
   function logout(msg) {
     token = null; staff = null;
+    _gpwd = [];
     localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_STAFF);
     $("#app-view").hidden = true;
     $("#login-view").hidden = false;
-    if (msg) {
-      const frame = document.getElementById("login-frame");
-      if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: "YC_ERR", msg: msg }, "*");
-    }
+    cleanupDyn();
+    // 恢复初始按钮状态
+    const goBtn = $("#g-go");
+    if (goBtn) { goBtn.hidden = false; goBtn.disabled = false; goBtn.textContent = "登 录"; }
+    if (msg) showGhostErr(msg);
+  }
+
+  /** 清除动态创建的登录字段 */
+  function cleanupDyn() {
+    const root = $("#g-dyn-root");
+    if (root) root.innerHTML = "";
+    _gpwd = [];
+  }
+
+  /** 显示幽灵登录错误 */
+  function showGhostErr(msg) {
+    const el = document.getElementById("g-err");
+    if (el) el.textContent = "\u274C " + msg;
+  }
+
+  /** 光标移末尾 */
+  function placeCaret(el, end) {
+    var sel = window.getSelection(), r = document.createRange();
+    r.selectNodeContents(el); r.collapse(!!end);
+    sel.removeAllRanges(); sel.addRange(r);
+    el.focus();
+  }
+
+  /** 渲染密码为圆点 */
+  function renderPwdMask() {
+    var pel = document.getElementById("g-pf");
+    if (!pel) return;
+    pel.textContent = _gpwd.length > 0 ? "\u25CF".repeat(_gpwd.length) : "";
+    placeCaret(pel, true);
+  }
+
+  // ---- 启动：绑定幽灵登录按钮 ----
+  function initGhostLogin() {
+    $("#g-go").addEventListener("click", function () {
+      // 隐藏「登录」按钮，展开第一步（用户名）
+      this.hidden = true;
+      renderGhostStep1();
+    });
+  }
+
+  /** 第一步：用户名 */
+  function renderGhostStep1() {
+    cleanupDyn();
+    var root = $("#g-dyn-root");
+    root.innerHTML =
+      '<div class="g-step">' +
+        '<label class="g-lb">员工账号</label>' +
+        '<div id="g-uf" class="g-box" spellcheck="false" autocapitalize="off" contenteditable="true"></div>' +
+        '<button id="g-next" class="g-btn g-outline" type="button">下一步</button>' +
+      '</div>';
+    var uf = document.getElementById("g-uf");
+    uf.focus();
+
+    var goNext = function () {
+      var val = (uf.textContent || "").trim();
+      if (!val) { uf.focus(); return; }
+      // 隐藏 step1，进入 step2
+      root.querySelector(".g-step").style.display = "none";
+      renderGhostStep2(val);
+    };
+    document.getElementById("g-next").addEventListener("click", goNext);
+    uf.addEventListener("keydown", function (e) { if (e.key === "Enter") goNext(); });
+  }
+
+  /** 第二步：密码（contenteditable + JS 掩码） */
+  function renderGhostStep2(user) {
+    cleanupDyn();
+    _gpwd = [];
+    var root = $("#g-dyn-root");
+    root.innerHTML =
+      '<div class="g-step">' +
+        '<label class="g-lb">访问凭证</label>' +
+        '<div id="g-pf" class="g-box g-pwd" spellcheck="false" contenteditable="true"></div>' +
+        '<button id="g-do" class="g-btn" type="button">进 \u5165</button>' +
+        '<div id="g-err" class="g-err"></div>' +
+      '</div>';
+    var pf = document.getElementById("g-pf");
+
+    // 密码框键盘拦截
+    pf.addEventListener("keydown", function (e) {
+      var k = e.key;
+      if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
+        e.preventDefault(); _gpwd.push(k); renderPwdMask(); return;
+      }
+      if (k === "Backspace") {
+        e.preventDefault();
+        if (window.getSelection().isCollapsed) { _gpwd.pop(); }
+        else {
+          var sel = window.getSelection();
+          if (sel.rangeCount > 0) {
+            var len = (sel.getRangeAt(0).toString() || "").length || 1;
+            _gpwd.splice(Math.max(0, _gpwd.length - len), len);
+          } else { _gpwd.pop(); }
+        }
+        renderPwdMask(); return;
+      }
+      if (k === "Delete") { e.preventDefault(); _gpwd.pop(); renderPwdMask(); return; }
+      if (k === "Enter") { e.preventDefault(); doLogin(user, _gpwd.join("")); }
+    });
+    pf.addEventListener("paste", function (e) {
+      e.preventDefault();
+      var txt = (e.clipboardData || window.clipboardData).getData("text") || "";
+      _gpwd.push.apply(_gpwd, txt.split(""));
+      renderPwdMask();
+    });
+    pf.addEventListener("input", function () {
+      setTimeout(renderPwdMask, 0);
+    });
+
+    pf.focus();
+    document.getElementById("g-do").addEventListener("click", function () {
+      doLogin(user, _gpwd.join(""));
+    });
   }
 
   // ---------- 进入主应用 ----------
@@ -797,12 +914,8 @@
   $("#logout-btn").addEventListener("click", () => logout());
   $("#modal-layer").addEventListener("click", (e) => { if (e.target.id === "modal-layer") closeModal(); });
 
-  // 登录凭证由沙箱 iframe（opaque origin，无密码管理器/扩展）采集后回传
-  window.addEventListener("message", function (e) {
-    const d = e.data;
-    if (!d || d.type !== "YC_LOGIN") return;
-    doLogin(d.user, d.pass);
-  });
+  // V8 幽灵登录初始化（零可编辑元素，无 iframe，无 postMessage）
+  initGhostLogin();
 
   if (token && staff) {
     enterApp();
