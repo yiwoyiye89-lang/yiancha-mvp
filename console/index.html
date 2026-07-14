@@ -7,19 +7,19 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- 登录视图 — 零 input / 零 form，彻底杜绝浏览器 autofill 检测 -->
+  <!-- 登录视图 -->
   <div id="login-view" class="login-view">
-    <div class="login-card">
+    <div class="login-card" id="login-card">
       <div class="login-logo">艺安查</div>
       <div class="login-sub">运营 / 商务 / 风控 管理后台</div>
 
-      <label class="lb">员工账号</label>
-      <div id="ci-user" class="ci-input" contenteditable="true" data-ph="admin"></div>
+      <label class="lb" for="ci-user">员工账号</label>
+      <div id="ci-user" class="ci-input" contenteditable="true" data-ph="admin" spellcheck="false"></div>
 
-      <label class="lb">登录密码</label>
-      <div id="ci-pass" class="ci-input ci-pass" contenteditable="true" data-ph="点击输入密码"></div>
+      <label class="lb" for="ci-pass">访问凭证</label>
+      <div id="ci-pass" class="ci-input ci-pass" contenteditable="true" data-ph="点击输入凭证" spellcheck="false"></div>
 
-      <button id="login-btn" class="login-btn">登 录</button>
+      <button id="login-btn" type="button" class="login-btn">进 入</button>
       <div id="login-error" class="login-error"></div>
 
       <div class="login-foot">独立子域部署 · 仅限内部员工使用</div>
