@@ -6,11 +6,11 @@
   <title>艺安查 · 登录</title>
   <style>
     :root { --accent:#4f8cff; --text:#1f2937; --text-soft:#64748b; --line:#e5e7eb; }
-    * { box-sizing: border-box; }
-    html, body { margin:0; padding:0; height:100%; font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    html,body { height:100%; font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif; }
     body {
       min-height:100vh; display:flex; align-items:center; justify-content:center;
-      background: linear-gradient(135deg,#0f172a 0%,#1d3a6b 100%);
+      background:linear-gradient(135deg,#0f172a 0%,#1d3a6b 100%);
     }
     .login-card {
       width:360px; max-width:92vw; background:#fff; border-radius:16px;
@@ -20,22 +20,31 @@
     .login-logo { font-size:28px; font-weight:800; color:var(--accent); letter-spacing:2px; }
     .login-sub { color:var(--text-soft); font-size:13px; margin:6px 0 24px; }
     .lb { display:block; text-align:left; font-size:13px; color:var(--text-soft); margin:14px 0 6px; }
-    .ci-input {
-      width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:8px;
-      font-size:14px; outline:none; background:#fff; color:var(--text); min-height:16px;
+
+    /* 纯 div 输入框 —— 零 input / 零 form，浏览器无 autofill 触发目标 */
+    .ci-box {
+      width:100%; min-height:42px; padding:11px 12px;
+      border:1px solid var(--line); border-radius:8px;
+      font-size:14px; line-height:18px;
+      background:#fff; color:var(--text);
+      outline:none; cursor:text;
+      word-break:keep-all; overflow:hidden;
+      transition:border-color .15s, box-shadow .15s;
     }
-    .ci-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,140,255,.12); }
+    .ci-box:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,140,255,.12); }
+    .ci-box::selection { background:rgba(79,140,255,.2); }
+    /* 密码掩码字体：等宽圆点 */
+    .pwd-mask { font-family:"Courier New",Consolas,monospace; letter-spacing:2px; }
+
     .login-btn {
       width:100%; margin-top:22px; padding:12px; background:var(--accent); color:#fff;
-      border:none; border-radius:8px; font-size:15px; font-weight:600; letter-spacing:4px; cursor:pointer;
+      border:none; border-radius:8px; font-size:15px; font-weight:600; letter-spacing:4px;
+      cursor:pointer; transition:background .15s;
     }
     .login-btn:hover { background:#3b78ec; }
-    .login-btn:disabled { opacity:.6; cursor:default; }
+    .login-btn:disabled { opacity:.5; cursor:not-allowed; }
     .login-error { color:#ef4444; font-size:13px; margin-top:12px; min-height:18px; }
     .login-foot { color:#94a3b8; font-size:11px; margin-top:22px; }
-
-    /* 防浏览器/扩展 autofill：非标准 name + 关闭自动填充 + 密码框标记 new-password */
-    input:-webkit-autofill { -webkit-box-shadow:0 0 0 30px #fff inset !important; -webkit-text-fill-color:var(--text) !important; }
   </style>
 </head>
 <body>
@@ -43,53 +52,156 @@
     <div class="login-logo">艺安查</div>
     <div class="login-sub">运营 / 商务 / 风控 管理后台</div>
 
-    <label class="lb" for="yc-user">员工账号</label>
-    <input id="yc-user" name="yc_u_7f" type="text" class="ci-input"
-           autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="admin" />
+    <label class="lb" id="lbl-user">员工账号</label>
+    <div id="yc-user" class="ci-box" contenteditable="true"
+         spellcheck="false" autocapitalize="off"
+         data-ph="admin"></div>
 
-    <label class="lb" for="yc-pass">访问凭证</label>
-    <input id="yc-pass" name="yc_p_3k" type="password" class="ci-input"
-           autocomplete="new-password" placeholder="••••••••" />
+    <label class="lb" id="lbl-pass">访问凭证</label>
+    <div id="yc-pass" class="ci-box pwd-mask" contenteditable="true"
+         spellcheck="false" data-ph=""></div>
 
-    <button id="yc-submit" type="button" class="login-btn">进 入</button>
+    <button id="yc-submit" class="login-btn">进 入</button>
     <div id="yc-error" class="login-error"></div>
 
     <div class="login-foot">独立子域部署 · 仅限内部员工使用</div>
   </div>
 
   <script>
-    (function () {
-      var userEl = document.getElementById("yc-user");
-      var passEl = document.getElementById("yc-pass");
-      var btn = document.getElementById("yc-submit");
-      var errEl = document.getElementById("yc-error");
+  (function(){
+    var userEl=document.getElementById("yc-user");
+    var passEl=document.getElementById("yc-pass");
+    var btn   =document.getElementById("yc-submit");
+    var errEl =document.getElementById("yc-error");
 
-      function showErr(m) { errEl.textContent = "❌ " + m; }
-      function submit() {
-        if (btn.disabled) return;
-        var user = (userEl.value || "").trim();
-        var pass = passEl.value || "";
-        if (!user || !pass) { showErr("请输入账号和密码"); return; }
-        btn.disabled = true; btn.textContent = "登录中…"; errEl.textContent = "";
-        // 回传父页面，由父页面（github.io 已加入后端 CORS 白名单）发起真实登录请求。
-        // 沙箱 opaque origin 无法跨域带 cookie，故凭证交由父页面处理。
-        parent.postMessage({ type: "YC_LOGIN", user: user, pass: pass }, "*");
+    /* ── 密码内部存储（不暴露到 DOM 文本） ── */
+    var _pwd=[];
+
+    function showErr(m){ errEl.textContent="\u274C "+m; }
+    function resetBtn(){ btn.disabled=false; btn.textContent="\u8FDB \u5165"; }
+
+    /* 获取用户名 */
+    function getUser(){ return (userEl.textContent||"").trim(); }
+
+    /* 渲染密码为圆点 */
+    function renderMask(){
+      passEl.textContent=_pwd.length>0 ? "\u25CF".repeat(_pwd.length) : "";
+      // 光标移末尾
+      placeCaret(passEl,true);
+    }
+
+    /* 设置光标位置 */
+    function placeCaret(el,end){
+      var sel=window.getSelection(),r=document.createRange();
+      r.selectNodeContents(el);
+      r.collapse(!!end);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      el.focus();
+    }
+
+    /* ── 用户名框：普通 contenteditable，无需特殊处理 ── */
+    userEl.addEventListener("focus",function(){
+      if(this.getAttribute("data-ph")&&!this.textContent.trim()){
+        this.textContent="";
+        this.removeAttribute("data-ph");
+      }
+    });
+    userEl.addEventListener("blur",function(){
+      if(!this.textContent.trim()){
+        this.setAttribute("data-ph","1");
+        this.textContent=this.getAttribute("data-ph")?"":"";
+      }
+    });
+
+    /* ── 密码框：拦截所有输入，存入 _pwd，只显示圆点 ── */
+    passEl.addEventListener("focus",function(){ if(_pwd.length===0) this.textContent=""; });
+    passEl.addEventListener("blur",function(){ if(_pwd.length===0) this.textContent=""; });
+
+    passEl.addEventListener("keydown",function(e){
+      var k=e.key;
+
+      /* 可打印字符 → 存入 _pwd → 重渲染 */
+      if(k.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.isComposing){
+        e.preventDefault();
+        _pwd.push(k);
+        renderMask();
+        return;
       }
 
-      btn.addEventListener("click", submit);
-      [userEl, passEl].forEach(function (el) {
-        el.addEventListener("keydown", function (e) {
-          if (e.key === "Enter") { e.preventDefault(); submit(); }
-        });
-      });
+      /* 退格 */
+      if(k==="Backspace"){
+        e.preventDefault();
+        if(window.getSelection().isCollapsed){
+          _pwd.pop();
+        }else{
+          /* 删除选区：估算删除量 */
+          var sel=window.getSelection();
+          if(sel.rangeCount>0){
+            var len=(sel.getRangeAt(0).toString()||"").length||1;
+            _pwd.splice(Math.max(0,_pwd.length-len),len);
+          }else{
+            _pwd.pop();
+          }
+        }
+        renderMask();
+        return;
+      }
 
-      // 接收父页面回传的登录错误
-      window.addEventListener("message", function (e) {
-        var d = e.data;
-        if (!d || d.type !== "YC_ERR") return;
-        btn.disabled = false; btn.textContent = "进 入"; showErr(d.msg);
+      /* Delete */
+      if(k==="Delete"){
+        e.preventDefault();
+        _pwd.pop();
+        renderMask();
+        return;
+      }
+
+      /* Enter → 提交 */
+      if(k==="Enter"){ e.preventDefault(); submit(); }
+    });
+
+    /* 粘贴 */
+    passEl.addEventListener("paste",function(e){
+      e.preventDefault();
+      var txt=(e.clipboardData||window.clipboardData).getData("text")||"";
+      _pwd.push.apply(_pwd,txt.split(""));
+      renderMask();
+    });
+
+    /* 兜底：如果浏览器仍注入文本（IME等），清掉并重新渲染 */
+    passEl.addEventListener("input",function(e){
+      if(e.inputType==="insertText"||e.inputType==="insertFromPaste"){
+        return; // 已被 keydown/paste 拦截
+      }
+      /* 其他情况（compositionend 等）→ 强制重渲染 */
+      setTimeout(function(){ renderMask(); },0);
+    });
+
+    /* ── 提交 ── */
+    function submit(){
+      if(btn.disabled) return;
+      var user=getUser();
+      var pass=_pwd.join("");
+      if(!user||!pass){ showErr("\u8BF7\u8F93\u5165\u8D26\u53F7\u548C\u5BC6\u7801"); return; }
+      btn.disabled=true; btn.textContent="\u767B\u5F55\u2026"; errEl.textContent="";
+      parent.postMessage({type:"YC_LOGIN",user:user,pass:pass},"*");
+    }
+
+    btn.addEventListener("click",submit);
+
+    [userEl,passEl].forEach(function(el){
+      el.addEventListener("keydown",function(e){
+        if(e.key==="Enter"){ e.preventDefault(); submit(); }
       });
-    })();
+    });
+
+    /* 接收父页面回传错误 */
+    window.addEventListener("message",function(e){
+      var d=e.data;
+      if(!d||d.type!=="YC_ERR") return;
+      resetBtn(); showErr(d.msg);
+    });
+  })();
   </script>
 </body>
 </html>
