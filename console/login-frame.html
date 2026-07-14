@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>艺安查 · 登录</title>
+  <style>
+    :root { --accent:#4f8cff; --text:#1f2937; --text-soft:#64748b; --line:#e5e7eb; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; padding:0; height:100%; font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif; }
+    body {
+      min-height:100vh; display:flex; align-items:center; justify-content:center;
+      background: linear-gradient(135deg,#0f172a 0%,#1d3a6b 100%);
+    }
+    .login-card {
+      width:360px; max-width:92vw; background:#fff; border-radius:16px;
+      padding:36px 32px; box-shadow:0 20px 60px rgba(0,0,0,.3);
+      text-align:center; position:relative; z-index:1;
+    }
+    .login-logo { font-size:28px; font-weight:800; color:var(--accent); letter-spacing:2px; }
+    .login-sub { color:var(--text-soft); font-size:13px; margin:6px 0 24px; }
+    .lb { display:block; text-align:left; font-size:13px; color:var(--text-soft); margin:14px 0 6px; }
+    .ci-input {
+      width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:8px;
+      font-size:14px; outline:none; background:#fff; color:var(--text); min-height:16px;
+    }
+    .ci-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,140,255,.12); }
+    .login-btn {
+      width:100%; margin-top:22px; padding:12px; background:var(--accent); color:#fff;
+      border:none; border-radius:8px; font-size:15px; font-weight:600; letter-spacing:4px; cursor:pointer;
+    }
+    .login-btn:hover { background:#3b78ec; }
+    .login-btn:disabled { opacity:.6; cursor:default; }
+    .login-error { color:#ef4444; font-size:13px; margin-top:12px; min-height:18px; }
+    .login-foot { color:#94a3b8; font-size:11px; margin-top:22px; }
+
+    /* 防浏览器/扩展 autofill：非标准 name + 关闭自动填充 + 密码框标记 new-password */
+    input:-webkit-autofill { -webkit-box-shadow:0 0 0 30px #fff inset !important; -webkit-text-fill-color:var(--text) !important; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-logo">艺安查</div>
+    <div class="login-sub">运营 / 商务 / 风控 管理后台</div>
+
+    <label class="lb" for="yc-user">员工账号</label>
+    <input id="yc-user" name="yc_u_7f" type="text" class="ci-input"
+           autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="admin" />
+
+    <label class="lb" for="yc-pass">访问凭证</label>
+    <input id="yc-pass" name="yc_p_3k" type="password" class="ci-input"
+           autocomplete="new-password" placeholder="••••••••" />
+
+    <button id="yc-submit" type="button" class="login-btn">进 入</button>
+    <div id="yc-error" class="login-error"></div>
+
+    <div class="login-foot">独立子域部署 · 仅限内部员工使用</div>
+  </div>
+
+  <script>
+    (function () {
+      var userEl = document.getElementById("yc-user");
+      var passEl = document.getElementById("yc-pass");
+      var btn = document.getElementById("yc-submit");
+      var errEl = document.getElementById("yc-error");
+
+      function showErr(m) { errEl.textContent = "❌ " + m; }
+      function submit() {
+        if (btn.disabled) return;
+        var user = (userEl.value || "").trim();
+        var pass = passEl.value || "";
+        if (!user || !pass) { showErr("请输入账号和密码"); return; }
+        btn.disabled = true; btn.textContent = "登录中…"; errEl.textContent = "";
+        // 回传父页面，由父页面（github.io 已加入后端 CORS 白名单）发起真实登录请求。
+        // 沙箱 opaque origin 无法跨域带 cookie，故凭证交由父页面处理。
+        parent.postMessage({ type: "YC_LOGIN", user: user, pass: pass }, "*");
+      }
+
+      btn.addEventListener("click", submit);
+      [userEl, passEl].forEach(function (el) {
+        el.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); submit(); }
+        });
+      });
+
+      // 接收父页面回传的登录错误
+      window.addEventListener("message", function (e) {
+        var d = e.data;
+        if (!d || d.type !== "YC_ERR") return;
+        btn.disabled = false; btn.textContent = "进 入"; showErr(d.msg);
+      });
+    })();
+  </script>
+</body>
+</html>
