@@ -2,57 +2,17 @@
 <html lang="zh-CN" autocomplete="off">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>艺安查 · 管理后台</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>YC Console</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;overflow:hidden;background:#0f172a}
+    body{display:flex;align-items:center;justify-content:center}
+    #lc{border-radius:16px;display:block;max-width:96vw;max-height:96vh}
+  </style>
 </head>
 <body>
-
-  <!-- ═══ 登录视图：V8 幽灵登录 —— 页面零可编辑元素，点击后动态创建 ═══ -->
-  <div id="login-view" class="login-view">
-    <div class="ghost-card" role="presentation" aria-label="艺安查登录入口">
-      <div class="g-logo">艺安查</div>
-      <div class="g-sub">运营 / 商务 / 风控 管理后台</div>
-      <button id="g-go" class="g-btn" type="button" autocomplete="off">登 录</button>
-      <div class="g-foot">独立子域部署 · 仅限内部员工使用</div>
-      <!-- 动态字段容器（JS 创建，用完即销毁） -->
-      <div id="g-dyn-root"></div>
-    </div>
-  </div>
-
-  <!-- 主控制台 -->
-  <div id="app-view" class="app-view" hidden>
-    <aside class="sidebar">
-      <div class="brand">
-        <span class="brand-mark">艺安查</span>
-        <span class="brand-sub">管理后台</span>
-      </div>
-      <nav id="side-nav" class="side-nav"></nav>
-      <div class="side-foot">
-        <div class="staff-info">
-          <div class="staff-name" id="staff-name">—</div>
-          <div class="staff-role" id="staff-role">—</div>
-        </div>
-        <button id="logout-btn" class="logout-btn">退出登录</button>
-      </div>
-    </aside>
-    <main class="content">
-      <header class="topbar">
-        <div class="crumb" id="crumb">运营看板</div>
-        <div class="top-actions">
-          <span class="env-tag">生产环境</span>
-        </div>
-      </header>
-      <section id="page" class="page"></section>
-    </main>
-  </div>
-
-  <!-- 模态层 -->
-  <div id="modal-layer" class="modal-layer" hidden>
-    <div class="modal-card" id="modal-card"></div>
-  </div>
-  <div id="toast" class="toast" hidden></div>
-
+  <canvas id="lc"></canvas>
   <script src="app.js"></script>
 </body>
 </html>
