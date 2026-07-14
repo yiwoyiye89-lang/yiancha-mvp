@@ -94,26 +94,30 @@
   async function doLogin(e) {
     e.preventDefault();
     const btn = $("#login-btn");
-    btn.disabled = true; $("#login-error").textContent = "";
+    if (btn.disabled) return;
+    btn.disabled = true; btn.textContent = "登录中…";
+    $("#login-error").textContent = "";
     try {
+      const user = ($("#username").value || "").trim();
+      const pass = $("#password").value || "";
+      if (!user || !pass) { throw new Error("请输入账号和密码"); }
       const res = await fetch(API + "/admin/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: $("#username").value.trim(), password: $("#password").value }),
+        body: JSON.stringify({ username: user, password: pass }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "登录失败");
-      }
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || ("登录失败(" + res.status + ")"));
+      }
       token = data.token; staff = data.staff;
       localStorage.setItem(LS_TOKEN, token);
       localStorage.setItem(LS_STAFF, JSON.stringify(staff));
       enterApp();
     } catch (err) {
-      $("#login-error").textContent = err.message;
+      $("#login-error").textContent = "❌ " + err.message;
     } finally {
-      btn.disabled = false;
+      btn.disabled = false; btn.textContent = "登 录";
     }
   }
 
