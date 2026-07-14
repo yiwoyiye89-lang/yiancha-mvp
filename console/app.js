@@ -807,6 +807,115 @@
     });
   });
 
+  // ================================================================
+  // v5 核弹级：主动猎杀浏览器/扩展注入的 autofill 白条
+  // 经过 v1~v4 验证：该白条不是普通 autofill 弹窗（不受 autocomplete/type/contenteditable 影响）
+  // 推测为 Chrome ML 启发式检测 / 密码管理器扩展注入的 shadow DOM 或独立元素
+  // ================================================================
+
+  /* 我们自己创建的合法元素 ID 白名单 */
+  var LEGACY_IDS = ["login-view","login-card","ci-user","ci-pass","login-btn",
+                    "login-error","app-view","side-nav","staff-name","staff-role",
+                    "logout-btn","crumb","page","modal-layer","modal-card","toast"];
+
+  function isOurElement(el) {
+    if (!el || el === document || el === document.documentElement || el === document.body) return true;
+    if (LEGACY_IDS.indexOf(el.id) >= 0) return true;
+    if (el.className && typeof el.className === "string") {
+      var cls = el.className.split(" ");
+      var known = ["login-view","login-card","login-logo","login-sub","lb",
+                   "ci-input","ci-pass","login-btn","login-error","login-foot",
+                   "app-view","sidebar","brand","brand-mark","brand-sub",
+                   "side-nav","side-foot","staff-info","logout-btn",
+                   "content","topbar","crumb","env-tag","page",
+                   "modal-layer","modal-card","toast","nav-item","nav-ico"];
+      for (var i = 0; i < cls.length; i++) { if (known.indexOf(cls[i]) >= 0) return true; }
+    }
+    return false;
+  }
+
+  /* 扫描并杀掉可疑元素 — 返回被杀数量 */
+  function killInjectedElements() {
+    var killed = [];
+    var all = document.querySelectorAll("*");
+    var card = document.getElementById("login-card");
+    if (!card) return killed;
+
+    var cardRect = card.getBoundingClientRect();
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (isOurElement(el)) continue;
+
+      /* 检查是否是可疑的覆盖元素 */
+      var style = window.getComputedStyle(el);
+      var pos = style.position;
+      var bg = style.backgroundColor;
+      var rect = el.getBoundingClientRect();
+
+      /* 条件：fixed/absolute 定位 + 白/浅色背景 + 与 login-card 区域重叠 + 不是我们的元素 */
+      var isOverlay = ((pos === "fixed" || pos === "absolute") &&
+                       rect.width > 50 && rect.height > 10 &&
+                       bg && bg !== "rgba(0, 0, 0, 0)" && bg.indexOf("rgba(0, 0, 0, 0)") !== 0);
+
+      /* 条件：在 login-card 区域内或附近，且看起来像弹窗 */
+      var overlapsCard = !(rect.right < cardRect.left || rect.left > cardRect.right ||
+                           rect.bottom < cardRect.top - 30 || rect.top > cardRect.bottom + 30);
+
+      if (isOverlay && overlapsCard) {
+        /* 记录诊断信息 */
+        var info = { tag: el.tagName, id: el.id, cls: el.className,
+                     pos: pos, bg: bg, w: Math.round(rect.width), h: Math.round(rect.height),
+                     html: el.outerHTML.substring(0, 200) };
+        console.warn("[AUTOFILL-KILL] Removing injected element:", info);
+        killed.push(info);
+        el.style.display = "none";
+        el.remove();
+      }
+    }
+    return killed;
+  }
+
+  /* 立即执行一次 + 延迟再执行（等浏览器完成注入） */
+  killInjectedElements();
+  setTimeout(killInjectedElements, 300);
+  setTimeout(killInjectedElements, 1000);
+  setTimeout(killInjectedElements, 3000);
+
+  /* MutationObserver：持续监听 DOM 变化，发现新注入立即清除 */
+  var injectObserver = new MutationObserver(function(mutations) {
+    var hasNewNode = false;
+    for (var i = 0; i < mutations.length; i++) {
+      var m = mutations[i];
+      if (m.addedNodes && m.addedNodes.length > 0) {
+        for (var j = 0; j < m.addedNodes.length; j++) {
+          if (m.addedNodes[j].nodeType === 1) { hasNewNode = true; break; }
+        }
+      }
+    }
+    if (hasNewNode) killInjectedElements();
+  });
+
+  /* 观察整个 body 的子树变化 */
+  injectObserver.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+  /* 尝试穿透 shadow root 清理 */
+  try {
+    document.querySelectorAll("*").forEach(function(el) {
+      if (el.shadowRoot) {
+        var shadow = el.shadowRoot;
+        var inner = shadow.querySelectorAll("*");
+        inner.forEach(function(se) {
+          var sStyle = window.getComputedStyle(se);
+          if ((sStyle.position === "fixed" || sStyle.position === "absolute") &&
+              se.offsetWidth > 40 && se.offsetHeight > 8) {
+            console.warn("[SHADOW-KILL] Removing from shadow root:", se.tagName, se.className);
+            se.remove();
+          }
+        });
+      }
+    });
+  } catch(e) {}
+
   if (token && staff) {
     enterApp();
   } else {
