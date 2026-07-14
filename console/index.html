@@ -27,9 +27,12 @@
 <div id="app-view" hidden>
   <nav id="sidebar"><h3>YC Console</h3><ul id="nav-list"></ul><button id="logout-btn">退出</button></nav>
   <main id="main"><header id="top-bar"></header><section id="content"></section></main>
-  <div id="modal-layer" hidden><div id="modal-box"><h3 id="modal-title"></h3><div id="modal-body"></div><div id="modal-foot"><button id="modal-close">关闭</button></div></div></div>
+  <div id="modal-layer" hidden onclick="if(event.target===this)this.hidden=true" style="display:none!important"><div id="modal-box"><h3 id="modal-title"></h3><div id="modal-body"></div><div id="modal-foot"><button id="modal-close" type="button" onclick="document.getElementById('modal-layer').hidden=true">关闭</button></div></div></div>
   <div id="toast" hidden></div>
 </div>
 <script src="app.js"></script>
+<script>/* Nuclear: force modal hidden regardless of JS errors */
+(function(){var m=document.getElementById('modal-layer');if(m){m.hidden=true;m.style.display='none';}})();
+</script>
 </body>
 </html>
