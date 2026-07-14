@@ -20,13 +20,24 @@ button { font-family: inherit; cursor: pointer; }
 input, select, textarea { font-family: inherit; }
 
 /* ===== 登录 ===== */
-.login-view { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0f172a 0%, #1d3a6b 100%); }
-.login-card { width: 360px; background: #fff; border-radius: 16px; padding: 36px 32px; box-shadow: 0 20px 60px rgba(0,0,0,.3); text-align: center; }
+.login-view { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0f172a 0%, #1d3a6b 100%); position: relative; z-index: 1; }
+.login-card { width: 360px; background: #fff; border-radius: 16px; padding: 36px 32px; box-shadow: 0 20px 60px rgba(0,0,0,.3); text-align: center; position: relative; z-index: 10; }
 .login-logo { font-size: 28px; font-weight: 800; color: var(--accent); letter-spacing: 2px; }
 .login-sub { color: var(--text-soft); font-size: 13px; margin: 6px 0 24px; }
 .login-card label { display: block; text-align: left; font-size: 13px; color: var(--text-soft); margin: 14px 0 6px; }
 .login-card input { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; outline: none; }
 .login-card input:focus { border-color: var(--accent); }
+/* 抑制浏览器原生 autofill 弹窗遮挡 */
+.login-card input:-webkit-autofill,
+.login-card input:-webkit-autofill:hover,
+.login-card input:-webkit-autofill:focus,
+.login-card input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #fff inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+/* 隐藏密码框的浏览器原生下拉建议（Chrome/Edge） */
+.login-card::-webkit-credentials-auto-fill-button { display: none !important; }
 .login-card button { width: 100%; margin-top: 22px; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 4px; }
 .login-card button:hover { background: #3b78ec; }
 .login-card button:disabled { opacity: .6; cursor: default; }
