@@ -798,6 +798,17 @@
   $("#logout-btn").addEventListener("click", () => logout());
   $("#modal-layer").addEventListener("click", (e) => { if (e.target.id === "modal-layer") closeModal(); });
 
+  // 密码框防浏览器自动填充弹窗：初始为 text，首次 focus 切为 password
+  (function () {
+    var pw = $("#password");
+    if (!pw) return;
+    pw.addEventListener("focus", function _switch() {
+      pw.type = "password";
+      pw.placeholder = "••••••••";
+      pw.removeEventListener("focus", _switch);
+    }, { once: true });
+  })();
+
   if (token && staff) {
     enterApp();
   } else {
