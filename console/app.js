@@ -1,5 +1,6 @@
-/* 艺安查管理后台 · 前端控制台（无构建，纯静态）
- * 仅依赖后端 /api/v1 的 admin 系列接口。
+/* 艺安查管理后台 · V9 Canvas 画布登录
+ * 整个登录界面用 Canvas 2D API 绘制，DOM 零文本入口元素。
+ * 浏览器 autofill/密码管理器无法注入到 Canvas 像素内容中。
  */
 (function () {
   "use strict";
@@ -8,919 +9,1124 @@
   const LS_TOKEN = "yc_token";
   const LS_STAFF = "yc_staff";
 
-  // 导航项定义：perm 控制可见性
-  const NAV = [
-    { key: "dashboard", label: "运营看板", ico: "▦", perm: "dashboard:view", crumb: "运营看板" },
-    { key: "users", label: "用户管理", ico: "👤", perm: "user:view", crumb: "用户管理" },
-    { key: "invites", label: "邀请码", ico: "✉", perm: "invite:view", crumb: "邀请码管理" },
-    { key: "leads", label: "商务线索", ico: "💼", perm: "lead:view", crumb: "商务线索" },
-    { key: "intake", label: "入驻审核", ico: "📝", perm: "intake:view", crumb: "艺人入驻审核" },
-    { key: "pricing", label: "双盲撮合", ico: "⚖", perm: "pricing:view", crumb: "双盲定价撮合" },
-    { key: "staff", label: "员工管理", ico: "🛡", perm: "staff:view", crumb: "员工管理" },
-  ];
+  // ═══════════════════════════════════════════
+  // Canvas 登录系统（V9 核方案）
+  // ═══════════════════════════════════════════
 
-  // 角色中文标签（与后端 DEFAULT_ROLES 保持一致）
-  const ROLE_LABELS = {
-    super_admin: "超级管理员",
-    operations: "运营",
-    business: "商务",
-    risk: "风控",
-    finance: "财务",
-    viewer: "只读访客",
+  var cv = document.getElementById("lc");
+  var ctx = cv.getContext("2d");
+
+  // --- 尺寸 ---
+  var W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+  var CW = 360, CH = 420; // 逻辑画布尺寸
+
+  function resize() {
+    W = Math.min(CW, window.innerWidth * 0.96);
+    H = Math.min(CH, window.innerHeight * 0.96);
+    cv.width = W * DPR;
+    cv.height = H * DPR;
+    cv.style.width = W + "px";
+    cv.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    render();
+  }
+
+  // --- 状态机 ---
+  // 0=初始(按钮), 1=用户名输入, 2=密码输入, 3=提交中, 4=错误
+  var S = 0;
+  var uname = "";
+  var pwdChars = [];
+  var errMsg = "";
+  var cursorBlink = true;
+  var cursorTimer = null;
+
+  // --- 颜色 ---
+  var C = {
+    bgTop: "#0f172a", bgBot: "#1d3a6b",
+    cardBg: "#ffffff",
+    logo: "#2563eb", sub: "#64748b",
+    btnBg: "#3b82f6", btnHov: "#2563eb", btnTxt: "#ffffff",
+    fieldBg: "#f8fafc", fieldBorder: "#e2e8f0", fieldFocus: "#3b82f6",
+    txt: "#1e293b", ph: "#94a3b8", err: "#dc2626",
+    foot: "#94a3b8"
   };
-  const ROLE_KEYS = Object.keys(ROLE_LABELS);
-  function sideLabel(s) { return s === "brand" ? "品牌方" : (s === "artist" ? "艺人方" : (s || "—")); }
-  function statusLabel(s) { return s === "open" ? "开放" : (s === "matched" ? "已匹配" : (s === "closed" ? "已关闭" : (s || "—"))); }
+
+  // --- 布局参数（逻辑坐标） ---
+  function L() {
+    var s = W / CW; // 缩放比
+    return {
+      cardX: (W - 320 * s) / 2, cardY: H * 0.12,
+      cardW: 320 * s, cardR: 16 * s,
+      logoY: 0, subY: 0, btnY: 0, btnW: 280 * s, btnH: 44 * s,
+      fieldY: 0, fieldW: 280 * s, fieldH: 42 * s,
+      footY: 0
+    };
+  }
+  function layout() {
+    var l = L();
+    l.logoY = l.cardY + 36 * (W/CW);
+    l.subY = l.logoY + 32 * (W/CW);
+    l.btnY = l.subY + 52 * (W/CW);
+    l.fieldY = l.subY + 48 * (W/CW);
+    l.footY = l.cardY + l.cardW * 0.85;
+    return l;
+  }
+
+  // --- 绘制函数 ---
+
+  function drawBg() {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, C.bgTop); g.addColorStop(1, C.bgBot);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawCard(l) {
+    roundRect(l.cardX, l.cardY, l.cardW, l.cardW * 1.05, l.cardR, C.cardBg);
+  }
+
+  function drawLogo(l) {
+    ctx.font = "bold " + Math.round(26 * W / CW) + "px sans-serif";
+    ctx.fillStyle = C.logo;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("YC", W / 2, l.logoY);
+  }
+
+  function drawSub(l) {
+    ctx.font = Math.round(12 * W / CW) + "px sans-serif";
+    ctx.fillStyle = C.sub;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText("\u63a7\u5236\u53f0", W / 2, l.subY);
+  }
+
+  function drawButton(l, label, hover) {
+    var bx = (W - l.btnW) / 2, by = l.btnY;
+    roundRect(bx, by, l.btnW, l.btnH, 10 * (W/CW), hover ? C.btnHov : C.btnBg);
+    ctx.fillStyle = C.btnTxt;
+    ctx.font = Math.round(15 * W / CW) + "px sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, W / 2, by + l.btnH / 2);
+  }
+
+  function drawField(l, label, value, isPwd, focused) {
+    var fy = l.fieldY;
+    // label
+    ctx.font = Math.round(12 * W / CW) + "px sans-serif";
+    ctx.fillStyle = C.txt;
+    ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+    ctx.fillText(label, (W - l.fieldW) / 2, fy - 6 * (W/CW));
+    // field background
+    var fx = (W - l.fieldW) / 2;
+    roundRect(fx, fy, l.fieldW, l.fieldH, 8 * (W/CW), C.fieldBg);
+    // border
+    ctx.strokeStyle = focused ? C.fieldFocus : C.fieldBorder;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(fx + 1, fy + 1, l.fieldW - 2, l.fieldH - 2);
+    // value
+    ctx.font = Math.round(14 * W / CW) + "px sans-serif";
+    ctx.fillStyle = value ? C.txt : C.ph;
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    var display = isPwd ? "\u25CF".repeat(pwdChars.length) : value;
+    var phText = isPwd ? "\u2022\u2022\u2022\u2022\u2022\u2022" : "\u70b9\u51fb\u8f93\u5165...";
+    ctx.fillText(value || focused ? (display || phText) : phText, fx + 14 * (W/CW), fy + l.fieldH / 2);
+    // cursor
+    if (focused && cursorBlink) {
+      var tw = ctx.measureText(display).width;
+      ctx.fillStyle = C.fieldFocus;
+      ctx.fillRect(fx + 16 * (W/CW) + tw, fy + 10 * (W/CW), 2 * (W/CW), l.fieldH - 20 * (W/CW));
+    }
+    return { x: fx, y: fy, w: l.fieldW, h: l.fieldH };
+  }
+
+  function drawError(l) {
+    if (!errMsg) return;
+    ctx.font = Math.round(12.5 * W / CW) + "px sans-serif";
+    ctx.fillStyle = C.err;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText(errMsg, W / 2, l.footY - 4 * (W/CW));
+  }
+
+  function drawFoot(l) {
+    ctx.font = Math.round(10.5 * W / CW) + "px sans-serif";
+    ctx.fillStyle = C.foot;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText("YC Console \u00b7 Internal Only", W / 2, l.footY + 18 * (W/CW));
+  }
+
+  function drawSpinner(l) {
+    var cx = W / 2, cy = l.btnY + l.btnH / 2, r = 12 * (W/CW);
+    var t = Date.now() / 400;
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(t);
+    for (var i = 0; i < 8; i++) {
+      ctx.rotate(Math.PI / 4);
+      ctx.beginPath(); ctx.moveTo(r - 5 * (W/CW), 0); ctx.lineTo(r, 0);
+      ctx.strokeStyle = "rgba(59,130,246," + (0.3 + 0.7 * i / 8) + ")";
+      ctx.lineWidth = 3 * (W/CW); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // --- 工具绘制函数 ---
+  function roundRect(x, y, w, h, r, fill) {
+    if (r > h / 2) r = h / 2;
+    if (r > w / 2) r = w / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+  }
+
+  // --- 主渲染 ---
+  var lastFieldHit = null;
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    drawBg();
+    var l = layout();
+    drawCard(l);
+    drawLogo(l);
+    drawSub(l);
+
+    if (S === 0) {
+      // 初始状态：只显示按钮
+      drawButton(l, "\u8fdb \u5165", false);
+      drawFoot(l);
+    } else if (S === 1) {
+      // 用户名输入
+      lastFieldHit = drawField(l, "\u8d26\u53f7", uname, false, true);
+      drawFoot(l);
+    } else if (S === 2) {
+      // 密码输入
+      lastFieldHit = drawField(l, "\u51ed\u8bc1", "", true, true);
+      drawFoot(l);
+    } else if (S === 3) {
+      // 提交中
+      drawSpinner(l);
+      ctx.font = Math.round(13 * W / CW) + "px sans-serif";
+      ctx.fillStyle = C.sub;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("\u9a8c\u8bc1\u4e2d...", W / 2, l.btnY + l.btnH / 2 + 35 * (W/CW));
+    } else if (S === 4) {
+      // 错误状态：回到初始+显示错误
+      drawButton(l, "\u91cd\u8bd5", false);
+      drawError(l);
+      drawFoot(l);
+    }
+  }
+
+  // 光标闪烁
+  function startCursor() {
+    stopCursor();
+    cursorTimer = setInterval(function () {
+      cursorBlink = !cursorBlink; render();
+    }, 520);
+  }
+  function stopCursor() {
+    if (cursorTimer) { clearInterval(cursorTimer); cursorTimer = null; }
+    cursorBlink = true;
+  }
+
+  // --- 事件处理 ---
+
+  // 点击检测
+  var btnHover = false;
+  cv.addEventListener("mousemove", function (e) {
+    var r = cv.getBoundingClientRect();
+    var mx = e.clientX - r.left, my = e.clientY - r.top;
+    var l = layout();
+    var bx = (W - l.btnW) / 2, by = l.btnY;
+
+    if ((S === 0 || S === 4) &&
+        mx >= bx && mx <= bx + l.btnW && my >= by && my <= by + l.btnH) {
+      if (!btnHover) { btnHover = true; render(); }
+      cv.style.cursor = "pointer";
+    } else {
+      if (btnHover) { btnHover = false; render(); }
+      cv.style.cursor = S === 1 || S === 2 ? "text" : "default";
+    }
+  });
+
+  cv.addEventListener("click", function (e) {
+    var r = cv.getBoundingClientRect();
+    var mx = e.clientX - r.left, my = e.clientY - r.top;
+    var l = layout();
+    var bx = (W - l.btnW) / 2, by = l.btnY;
+
+    if (S === 0 || S === 4) {
+      // 点击进入按钮
+      if (mx >= bx && mx <= bx + l.btnW && my >= by && my <= by + l.btnH) {
+        S = 1; uname = ""; errMsg = ""; startCursor(); render();
+        cv.focus();
+      }
+    } else if (S === 1) {
+      // 用户名阶段点击任意处聚焦（canvas 已 focus）
+      // 保持当前状态
+    } else if (S === 2) {
+      // 密码阶段
+    }
+  });
+
+  // 触摸支持
+  cv.addEventListener("touchend", function (e) {
+    e.preventDefault();
+    var t = e.changedTouches[0];
+    var r = cv.getBoundingClientRect();
+    var mx = t.clientX - r.left, my = t.clientY - r.top;
+    var l = layout();
+    var bx = (W - l.btnW) / 2, by = l.btnY;
+
+    if (S === 0 || S === 4) {
+      if (mx >= bx && mx <= bx + l.btnW && my >= by && my <= by + l.btnH) {
+        S = 1; uname = ""; errMsg = ""; startCursor(); render();
+        cv.focus();
+      }
+    }
+  }, { passive: false });
+
+  // 键盘输入（核心：所有文字输入走这里）
+  cv.addEventListener("keydown", function (e) {
+    if (S === 1) {
+      // 用户名输入
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (uname.trim().length > 0) { S = 2; pwdChars = []; render(); }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault(); S = 0; stopCursor(); render(); return;
+      }
+      if (e.key === "Backspace") {
+        e.preventDefault(); uname = uname.slice(0, -1); render(); return;
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
+        // 允许字母、数字、下划线、点、@、-
+        if (/[\w.@\-]/.test(e.key)) {
+          e.preventDefault(); uname += e.key; render();
+        }
+      }
+    } else if (S === 2) {
+      // 密码输入
+      if (e.key === "Enter") {
+        e.preventDefault();
+        doLogin(uname.trim(), pwdChars.join(""));
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault(); S = 1; render(); return;
+      }
+      if (e.key === "Backspace") {
+        e.preventDefault(); pwdChars.pop(); render(); return;
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
+        e.preventDefault(); pwdChars.push(e.key); render();
+      }
+    }
+  });
+
+  // 组合输入法（IME）支持
+  var composing = false;
+  cv.addEventListener("compositionstart", function () { composing = true; });
+  cv.addEventListener("compositionend", function (e) {
+    composing = false;
+    if (S === 1 && e.data) { uname += e.data; render(); }
+    else if (S === 2 && e.data) { pwdChars.push.apply(pwdChars, e.data.split("")); render(); }
+  });
+
+  // 让 canvas 可获得焦点
+  cv.setAttribute("tabindex", "0");
+
+  // --- 认证逻辑 ---
+
+  async function doLogin(user, pass) {
+    if (!user || !pass) { errMsg = "\u8bf7\u586b\u5199\u5b8c\u6574"; S = 4; stopCursor(); render(); return; }
+    S = 3; stopCursor(); render();
+
+    try {
+      var res = await fetch(API + "/admin/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user, password: pass }),
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "\u767b\u5931\u5931\u8d25(" + res.status + ")");
+
+      token = data.token;
+      staff = data.staff;
+      localStorage.setItem(LS_TOKEN, token);
+      localStorage.setItem(LS_STAFF, JSON.stringify(staff));
+
+      // 登录成功 → 切换到 DOM 应用
+      enterAppDOM();
+    } catch (err) {
+      errMsg = err.message; S = 4; render();
+    }
+  }
+
+  // --- 成功后切换到 DOM 应用 ---
+  function enterAppDOM() {
+    // 隐藏 canvas，构建完整 DOM 应用
+    cv.style.display = "none";
+    buildDOMApp();
+  }
+
+  // ═══════════════════════════════════════════
+  // DOM 应用部分（登录成功后才存在）
+  // ═══════════════════════════════════════════
 
   let token = localStorage.getItem(LS_TOKEN);
   let staff = null;
   try { staff = JSON.parse(localStorage.getItem(LS_STAFF) || "null"); } catch (e) {}
 
-  // ---------- 工具 ----------
+  var NAV = [
+    { key: "dashboard", label: "\u8fd0\u8425\u770b\u677f", ico: "\u25A6", perm: "dashboard:view", crumb: "\u8fd0\u8425\u770b\u677f" },
+    { key: "users", label: "\u7528\u6237\u7ba1\u7406", ico: "\uD83D\uDC64", perm: "user:view", crumb: "\u7528\u6237\u7ba1\u7406" },
+    { key: "invites", label: "\u9080\u8bf7\u7801", ico: "\u2709", perm: "invite:view", crumb: "\u9080\u8bf7\u7801\u7ba1\u7406" },
+    { key: "leads", label: "\u5546\u52a1\u7ebf索", ico: "\uD83D\uDCBC", perm: "lead:view", crumb: "\u5546\u52a1\u7ebf索" },
+    { key: "intake", label: "\u5165\u9a7b\u5ba1\u6838", ico: "\uD83D\uDCDD", perm: "intake:view", crumb: "\u827a\u4eba\u5165\u9a7b\u5ba1\u6838" },
+    { key: "pricing", label: "\u53cc\u76f2\u64cb\u5408", ico: "\u2696", perm: "pricing:view", crumb: "\u53cc\u76f2\u5b9a\u4ef7\u64cb\u5408" },
+    { key: "staff", label: "\u5458\u5de5\u7ba1\u7406", ico: "\u26DF", perm: "staff:view", crumb: "\u5458\u5de5\u7ba1\u7406" },
+  ];
+
+  var ROLE_LABELS = { super_admin: "\u8d85\u7ea7\u7ba1\u7406\u5458", operations: "\u8fd0\u8425", business: "\u5546\u52a1", risk: "\u98ce\u63a7", finance: "\u8d22\u52a1", viewer: "\u53ea\u8bfb\u8bbf\u5ba2" };
+  var ROLE_KEYS = Object.keys(ROLE_LABELS);
+
   function $(sel, root) { return (root || document).querySelector(sel); }
   function hasPerm(p) { return staff && Array.isArray(staff.perms) && staff.perms.indexOf(p) >= 0; }
-
   function fmtTime(ts) {
-    if (!ts) return "—";
-    const d = new Date(ts * 1000);
-    const p = (n) => (n < 10 ? "0" + n : "" + n);
-    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    if (!ts) return "\u2014";
+    var d = new Date(ts * 1000), p = function(n){return n<10?"0"+n:""+n};
+    return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
   }
-
   function toast(msg, type) {
-    const t = $("#toast");
-    t.textContent = msg;
-    t.className = "toast" + (type ? " " + type : "");
-    t.hidden = false;
-    clearTimeout(t._t);
-    t._t = setTimeout(() => { t.hidden = true; }, 2600);
+    var t = $("#toast"); if(!t)return;
+    t.textContent = msg; t.className = "toast"+(type?" "+type:""); t.hidden=false;
+    clearTimeout(t._t); t._t=setTimeout(function(){t.hidden=true},2600);
   }
-
   async function api(path, opts) {
-    opts = opts || {};
-    const headers = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = "Bearer " + token;
-    const res = await fetch(API + path, {
-      method: opts.method || "GET",
-      headers,
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
-    if (res.status === 401) { logout("凭证已失效，请重新登录"); throw new Error("凭证失效"); }
-    if (res.status === 403) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.detail || "无权限");
-    }
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.detail || ("请求失败(" + res.status + ")"));
-    }
+    opts=opts||{}; var headers={"Content-Type":"application/json"};
+    if(token) headers["Authorization"]="Bearer "+token;
+    var res=await fetch(API+path,{method:opts.method||"GET",headers,body:opts.body?JSON.stringify(opts.body):undefined});
+    if(res.status===401){doDOMLogout("\u51ed\u8bc1\u5df2\u5931\u6548");throw new Error("\u51ed\u8bc1\u5931\u6548");}
+    if(res.status===403){var e=await res.json().catch(function(){return{}});throw new Error(e.detail||"\u6743\u9650\u4e0d\u8db3");}
+    if(!res.ok){var e=await res.json().catch(function(){return{}});throw new Error(e.detail||"\u8bf7\u6c42\u5931\u8d25("+res.status+")");}
     return res.json();
   }
+  function openModal(html){$("#modal-card").innerHTML=html;$("#modal-layer").hidden=false;}
+  function closeModal(){$("#modal-layer").hidden=true;$("#modal-card").innerHTML="";}
+  function badge(text,cls){return '<span class="badge '+(cls||'')+'">'+(text==null?'\u2014':text)+'</span>';}
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]);});}
+  function kv(k,v){return "<div class='k'>"+k+"</div><div class='v'>"+v+"</div>";}
+  function field(label,html){return "<div class='field'><label>"+label+"</label>"+html+"</div>";}
 
-  function openModal(html) {
-    $("#modal-card").innerHTML = html;
-    $("#modal-layer").hidden = false;
+  function sideLabel(s){return s==="brand"? "\u54c1\u724c\u65b9":(s==="artist"? "\u827a\u4eba\u65b9":(s||"\u2014"));}
+  function statusLabel(s){return s==="open"? "\u5f00\u653e":(s==="matched"? "\u5df2\u5339\u914d":(s==="closed"? "\u5df2\u5173\u95ed":(s||"\u2014")));}
+
+  function pager(total,page,size){
+    var p=Math.ceil(total/size)||1;
+    return '<div class="pager"><span>共 '+total+' 条</span><span>第 '+page+'/'+p+' 页</span>'+
+      "<button class='btn btn-sm' data-pg='prev'"+(page<=1?" disabled":"")+">\u4e0a\u4e00\u9875</button>"+
+      "<button class='btn btn-sm' data-pg='next'"+(page>=p?" disabled":"")+">\u4e0b\u4e00\u9875</button></div>";
   }
-  function closeModal() { $("#modal-layer").hidden = true; $("#modal-card").innerHTML = ""; }
-
-  function badge(text, cls) {
-    return '<span class="badge ' + (cls || "") + '">' + (text == null ? "—" : text) + "</span>";
-  }
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  }
-
-  // ═══════════════════════════════════════════
-  // V8 幽灵登录 —— 页面零可编辑元素初始态
-  // 用户点击「登录」后，JS 动态创建单字段分步模态。
-  // 整个页面加载时不存在任何 contenteditable/input/form，
-  // Chrome autofill 启发式引擎无目标可识别。
-  // ═══════════════════════════════════════════
-
-  /** 内部密码存储（不暴露到 DOM 文本节点） */
-  let _gpwd = [];
-
-  async function doLogin(user, pass) {
-    try {
-      if (!user || !pass) { throw new Error("请输入账号和密码"); }
-      const res = await fetch(API + "/admin/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: user, password: pass }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || ("登录失败(" + res.status + ")"));
-      token = data.token; staff = data.staff;
-      localStorage.setItem(LS_TOKEN, token);
-      localStorage.setItem(LS_STAFF, JSON.stringify(staff));
-      cleanupDyn(); // 销毁动态字段
-      enterApp();
-    } catch (err) {
-      showGhostErr(err.message);
-    }
-  }
-
-  function logout(msg) {
-    token = null; staff = null;
-    _gpwd = [];
-    localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_STAFF);
-    $("#app-view").hidden = true;
-    $("#login-view").hidden = false;
-    cleanupDyn();
-    // 恢复初始按钮状态
-    const goBtn = $("#g-go");
-    if (goBtn) { goBtn.hidden = false; goBtn.disabled = false; goBtn.textContent = "登 录"; }
-    if (msg) showGhostErr(msg);
-  }
-
-  /** 清除动态创建的登录字段 */
-  function cleanupDyn() {
-    const root = $("#g-dyn-root");
-    if (root) root.innerHTML = "";
-    _gpwd = [];
-  }
-
-  /** 显示幽灵登录错误 */
-  function showGhostErr(msg) {
-    const el = document.getElementById("g-err");
-    if (el) el.textContent = "\u274C " + msg;
-  }
-
-  /** 光标移末尾 */
-  function placeCaret(el, end) {
-    var sel = window.getSelection(), r = document.createRange();
-    r.selectNodeContents(el); r.collapse(!!end);
-    sel.removeAllRanges(); sel.addRange(r);
-    el.focus();
-  }
-
-  /** 渲染密码为圆点 */
-  function renderPwdMask() {
-    var pel = document.getElementById("g-pf");
-    if (!pel) return;
-    pel.textContent = _gpwd.length > 0 ? "\u25CF".repeat(_gpwd.length) : "";
-    placeCaret(pel, true);
-  }
-
-  // ---- 启动：绑定幽灵登录按钮 ----
-  function initGhostLogin() {
-    $("#g-go").addEventListener("click", function () {
-      // 隐藏「登录」按钮，展开第一步（用户名）
-      this.hidden = true;
-      renderGhostStep1();
+  function bindPager(d,reload){
+    var box=$("#page");
+    box.querySelectorAll("[data-pg]").forEach(function(b){
+      b.onclick=function(){if(b.disabled)return;if(b.dataset.pg==="prev")pageStateDec(d);else pageStateInc(d);reload();};
     });
   }
-
-  /** 第一步：用户名 */
-  function renderGhostStep1() {
-    cleanupDyn();
-    var root = $("#g-dyn-root");
-    root.innerHTML =
-      '<div class="g-step">' +
-        '<label class="g-lb">员工账号</label>' +
-        '<div id="g-uf" class="g-box" spellcheck="false" autocapitalize="off" contenteditable="true"></div>' +
-        '<button id="g-next" class="g-btn g-outline" type="button">下一步</button>' +
-      '</div>';
-    var uf = document.getElementById("g-uf");
-    uf.focus();
-
-    var goNext = function () {
-      var val = (uf.textContent || "").trim();
-      if (!val) { uf.focus(); return; }
-      // 隐藏 step1，进入 step2
-      root.querySelector(".g-step").style.display = "none";
-      renderGhostStep2(val);
-    };
-    document.getElementById("g-next").addEventListener("click", goNext);
-    uf.addEventListener("keydown", function (e) { if (e.key === "Enter") goNext(); });
+  function pageStateDec(d){setPage(Math.max(1,d.page-1));}
+  function pageStateInc(d){setPage(d.page+1);}
+  function setPage(p){
+    var key=location.hash.replace("#/","");
+    if(key==="users") usersState.page=p;
+    else if(key==="leads") leadsState.page=p;
+    else if(key==="intake") intakeState.page=p;
+    else if(key==="pricing") pricingState.page=p;
+  }
+  function metric(val,label,r1,r2){
+    var rows='<div class="m-row">';if(r1)rows+="<span>"+r1+"</span>";if(r2)rows+="<span>"+r2+"</span>";rows+="</div>";
+    return '<div class="metric"><div class="m-val">'+val+'</div><div class="m-label">'+label+"</div>"+rows+"</div>";
+  }
+  function distCard(title,dist){
+    var rows="";
+    Object.keys(dist).forEach(function(k){rows+="<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9'><span>"+k+"</span><b>"+dist[k]+"</b></div>";});
+    return '<div class="card"><div class="card-title">'+title+"</div>"+(rows||"<div class='muted'>\u2014</div>")+"</div>";
   }
 
-  /** 第二步：密码（contenteditable + JS 掩码） */
-  function renderGhostStep2(user) {
-    cleanupDyn();
-    _gpwd = [];
-    var root = $("#g-dyn-root");
-    root.innerHTML =
-      '<div class="g-step">' +
-        '<label class="g-lb">访问凭证</label>' +
-        '<div id="g-pf" class="g-box g-pwd" spellcheck="false" contenteditable="true"></div>' +
-        '<button id="g-do" class="g-btn" type="button">进 \u5165</button>' +
-        '<div id="g-err" class="g-err"></div>' +
-      '</div>';
-    var pf = document.getElementById("g-pf");
+  // 构建完整 DOM 应用界面
+  function buildDOMApp() {
+    document.body.innerHTML =
+      '<aside class="sidebar">'+
+        '<div class="brand"><span class="brand-mark">YC</span><span class="brand-sub">Console</span></div>'+
+        '<nav id="side-nav" class="side-nav"></nav>'+
+        '<div class="side-foot"><div class="staff-info"><div class="staff-name" id="staff-name">\u2014</div><div class="staff-role" id="staff-role">\u2014</div></div>'+
+        '<button id="logout-btn" class="logout-btn">\u9000\u51fa</button></div></aside>'+
+      '<main class="content"><header class="topbar"><div class="crumb" id="crumb">\u8fd0\u8425\u770b\u677f</div>'+
+        '<div class="top-actions"><span class="env-tag">Production</span></div></header>'+
+        '<section id="page" class="page"></section></main>'+
+      '<div id="modal-layer" class="modal-layer" hidden><div class="modal-card" id="modal-card"></div></div>'+
+      '<div id="toast" class="toast" hidden></div>';
 
-    // 密码框键盘拦截
-    pf.addEventListener("keydown", function (e) {
-      var k = e.key;
-      if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
-        e.preventDefault(); _gpwd.push(k); renderPwdMask(); return;
-      }
-      if (k === "Backspace") {
-        e.preventDefault();
-        if (window.getSelection().isCollapsed) { _gpwd.pop(); }
-        else {
-          var sel = window.getSelection();
-          if (sel.rangeCount > 0) {
-            var len = (sel.getRangeAt(0).toString() || "").length || 1;
-            _gpwd.splice(Math.max(0, _gpwd.length - len), len);
-          } else { _gpwd.pop(); }
-        }
-        renderPwdMask(); return;
-      }
-      if (k === "Delete") { e.preventDefault(); _gpwd.pop(); renderPwdMask(); return; }
-      if (k === "Enter") { e.preventDefault(); doLogin(user, _gpwd.join("")); }
-    });
-    pf.addEventListener("paste", function (e) {
-      e.preventDefault();
-      var txt = (e.clipboardData || window.clipboardData).getData("text") || "";
-      _gpwd.push.apply(_gpwd, txt.split(""));
-      renderPwdMask();
-    });
-    pf.addEventListener("input", function () {
-      setTimeout(renderPwdMask, 0);
-    });
-
-    pf.focus();
-    document.getElementById("g-do").addEventListener("click", function () {
-      doLogin(user, _gpwd.join(""));
-    });
+    loadDOMStyles();
+    initDOMApp();
   }
 
-  // ---------- 进入主应用 ----------
-  function enterApp() {
-    $("#login-view").hidden = true;
-    $("#app-view").hidden = false;
-    $("#staff-name").textContent = staff.real_name || staff.username;
-    $("#staff-role").textContent = staff.role_label + "（" + staff.username + "）";
+  // 注入应用 CSS
+  function loadDOMStyles() {
+    var css = document.createElement("style");
+    css.textContent = (
+      "*{margin:0;padding:0;box-sizing:border-box}"+
+      "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f1f5f9;color:#1e293b;display:flex;height:100vh}"+
+      ".sidebar{width:230px;background:#111c34;color:#e2e8f0;display:flex;flex-direction:column;flex-shrink:0}"+
+      ".brand{padding:20px;border-bottom:1px solid rgba(255,255,255,.08)}"+
+      ".brand-mark{font-size:18px;font-weight:800;color:#3b82f6;letter-spacing:1px}"+
+      ".brand-sub{font-size:11px;color:#64748b;margin-top:2px}"+
+      ".side-nav{flex:1;padding:12px 0;overflow-y:auto}"+
+      ".nav-item{padding:10px 20px;cursor:pointer;font-size:13.5px;color:#94a3b8;display:flex;align-items:center;gap:8px;transition:.15s}"+
+      ".nav-item:hover,.nav-item.active{color:#fff;background:rgba(59,130,246,.12)}"+
+      ".nav-ico{font-size:16px;width:22px;text-align:center}"+
+      ".side-foot{padding:16px 20px;border-top:1px solid rgba(255,255,255,.08)}"+
+      ".staff-info{margin-bottom:10px}"+
+      ".staff-name{font-size:13px;font-weight:600}"+
+      ".staff-role{font-size:11px;color:#64748b}"+
+      ".logout-btn{width:100%;padding:8px;background:rgba(220,38,38,.12);color:#f87171;border:1px solid rgba(220,38,38,.2);border-radius:6px;font-size:12px;cursor:pointer}"+
+      ".logout-btn:hover{background:rgba(220,38,38,.2)}"+
+      ".content{flex:1;overflow-y:auto;display:flex;flex-direction:column}"+
+      ".topbar{height:56px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0}"+
+      ".crumb{font-size:15px;font-weight:600}"+
+      ".env-tag{font-size:11px;background:#dbeafe;color:#2563eb;padding:3px 10px;border-radius:99px;font-weight:600}"+
+      ".page{flex:1;padding:24px}"+
+      ".card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:16px}"+
+      ".card-title{font-size:14.5px;font-weight:700;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}"+
+      ".sub{font-size:12px;color:#94a3b8;font-weight:400}"+
+      ".metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:16px}"+
+      ".metric{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;text-align:center}"+
+      ".m-val{font-size:28px;font-weight:800;color:#1e293b}"+
+      ".m-label{font-size:12px;color:#64748b;margin-top:4px}"+
+      ".m-row{display:flex;justify-content:center;gap:12px;margin-top:8px;font-size:11.5px;color:#64748b}"+
+      ".section-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}"+
+      ".table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}"+
+      "table{width:100%;border-collapse:collapse}"+
+      "th{background:#f8fafc;font-weight:600;color:#475569;font-size:12.5px;text-align:left;padding:10px 14px;white-space:nowrap;border-bottom:1px solid #e2e8f0}"+
+      "td{font-size:13px;padding:9px 14px;border-bottom:1px solid #f1f5f9;color:#334155}"+
+      "tr:hover td{background:#f8fafc}"+
+      ".badge{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:99px;font-weight:600}"+
+      ".b-yes{background:#dcfce7;color:#166534}.b-no{background:#fee2e2;color:#991b1b}"+
+      ".b-active{background:#dbeafe;color:#1d4ed8}.b-inactive{background:#f1f5f9;color:#64748b}"+
+      ".b-free{background:#f0fdf4;color:#166534}.b-personal{background:#eff6ff;color:#1d4ed8}"+
+      ".b-professional{background:#fefce8;color:#854d0e}.b-enterprise{background:#fdf4ff;color:#86198f}"+
+      ".b-pending{background:#fef3c7;color:#92400e}.b-contacted{background:#dbeafe;color:#1e40af}"+
+      ".b-converted{background:#dcfce7;color:#166534}.b-rejected{background:#fee2e2;color:#991b1b}"+
+      ".b-open{background:#dbeafe;color:#1d4ed8}.b-matched{background:#dcfce7;color:#166534}.b-closed{background:#f1f5f9;color:#64748b}"+
+      ".b-low{background:#dcfce7;color:#166534}.b-medium{background:#fef3c7;color:#92400e}.b-high{background:#fee2e2;color:#991b1b}"+
+      ".kv{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;padding:4px 0;font-size:13px}"+
+      ".k{color:#64748b}.v{color:#1e293b}"+
+      ".toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}"+
+      ".toolbar input,.toolbar select{padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff}"+
+      ".btn{padding:8px 16px;border:1px solid #e2e8f0;background:#fff;border-radius:6px;font-size:13px;cursor:pointer}"+
+      ".btn-primary{background:#3b82f6;color:#fff;border-color:#3b82f6}"+
+      ".btn-ok{background:#22c55e;color:#fff;border-color:#22c55e}"+
+      ".btn-danger{background:#fff;color:#ef4444;border-color:#ef4444}"+
+      ".btn:hover{opacity:.88}"+
+      ".btn:disabled{opacity:.5;cursor:default}"+
+      ".btn-sm{padding:5px 10px;font-size:11.5px}"+
+      ".empty{text-align:center;color:#94a3b8;padding:28px;font-size:13.5px}"+
+      ".muted{color:#94a3b8;font-size:12px}"+
+      ".modal-layer{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:50}"+
+      ".modal-card{background:#fff;border-radius:14px;width:560px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:24px}"+
+      ".modal-actions{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}"+
+      ".field{margin-bottom:12px}.field>label{display:block;font-size:12.5px;font-weight:600;color:#374151;margin-bottom:4px}"+
+      ".field input,.field select{width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13.5px}"+
+      ".toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#111c34;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.3)}"+
+      ".pager{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:14px;font-size:12.5px;color:#64748b}"+
+      ".nowrap{white-space:nowrap}"
+    );
+    document.head.appendChild(css);
+  }
+
+  function initDOMApp() {
+    $("#logout-btn").addEventListener("click", function(){doDOMLogout();});
+    $("#modal-layer").addEventListener("click",function(e){if(e.target.id==="modal-layer")closeModal();});
+
     renderNav();
-    const hash = location.hash.replace("#/", "") || "dashboard";
+    var hash = location.hash.replace("#/","") || "dashboard";
     navigate(hash);
+
+    window.addEventListener("hashchange", function(){
+      if(staff) navigate(location.hash.replace("#/",""));
+    });
   }
 
-  function renderNav() {
-    const nav = $("#side-nav");
-    nav.innerHTML = "";
-    NAV.forEach((n) => {
-      if (!hasPerm(n.perm)) return;
-      const a = document.createElement("div");
-      a.className = "nav-item";
-      a.dataset.key = n.key;
-      a.innerHTML = '<span class="nav-ico">' + n.ico + "</span>" + n.label;
-      a.onclick = () => { location.hash = "#/" + n.key; };
+  function doDOMLogout(msg){
+    token=null;staff=null;
+    localStorage.removeItem(LS_TOKEN);localStorage.removeItem(LS_STAFF);
+    location.reload();
+  }
+
+  function renderNav(){
+    var nav=$("#side-nav");
+    nav.innerHTML="";
+    NAV.forEach(function(n){
+      if(!hasPerm(n.perm)) return;
+      var a=document.createElement("div");
+      a.className="nav-item";a.dataset.key=n.key;
+      a.innerHTML='<span class="nav-ico">'+n.ico+'</span>'+n.label;
+      a.onclick=function(){location.hash="#/"+n.key;};
       nav.appendChild(a);
     });
   }
 
-  function navigate(key) {
-    const nav = NAV.find((n) => n.key === key);
-    if (!nav || !hasPerm(nav.perm)) { key = "dashboard"; }
-    document.querySelectorAll(".nav-item").forEach((el) => {
-      el.classList.toggle("active", el.dataset.key === key);
+  function navigate(key){
+    var nav=NAV.find(function(n){return n.key===key;});
+    if(!nav||!hasPerm(nav.perm)){key="dashboard";}
+    document.querySelectorAll(".nav-item").forEach(function(el){
+      el.classList.toggle("active",el.dataset.key===key);
     });
-    const item = NAV.find((n) => n.key === key);
-    $("#crumb").textContent = item ? item.crumb : key;
-    const page = $("#page");
-    page.innerHTML = "";
-    if (key === "dashboard") return renderDashboard(page);
-    if (key === "users") return renderUsers(page);
-    if (key === "invites") return renderInvites(page);
-    if (key === "leads") return renderLeads(page);
-    if (key === "intake") return renderIntake(page);
-    if (key === "pricing") return renderPricing(page);
-    if (key === "staff") return renderStaff(page);
+    var item=NAV.find(function(n){return n.key===key;});
+    $("#crumb").textContent=item?item.crumb:key;
+    var page=$("#page");
+    page.innerHTML="";
+    if(key==="dashboard") return renderDashboard(page);
+    if(key==="users") return renderUsers(page);
+    if(key==="invites") return renderInvites(page);
+    if(key==="leads") return renderLeads(page);
+    if(key==="intake") return renderIntake(page);
+    if(key==="pricing") return renderPricing(page);
+    if(key==="staff") return renderStaff(page);
   }
 
-  // ============ 看板 ============
-  async function renderDashboard(root) {
-    root.innerHTML = '<div class="empty">加载中…</div>';
-    try {
-      const d = await api("/admin/dashboard");
-      const u = d.users, l = d.leads, it = d.intakes, iv = d.invites, pr = d.pricing;
-      root.innerHTML =
-        '<div class="metrics">' +
-          metric(u.total, "注册用户", "今日新增 <b>" + u.today_new + "</b>", "已认证 <b>" + u.verified + "</b>") +
-          metric(l.total, "商务线索", "待处理 <b>" + (l.dist.pending || 0) + "</b>", "未分配 <b>" + l.unassigned + "</b>") +
-          metric(it.total, "入驻申请", "待审 <b>" + (it.dist.pending_review || 0) + "</b>", "已通过 <b>" + (it.dist.approved || 0) + "</b>") +
-          metric(iv.total, "邀请码", "活跃 <b>" + iv.active + "</b>") +
-          metric(pr.total, "双盲撮合", "开放 <b>" + (pr.dist.open || 0) + "</b>", "已匹配 <b>" + (pr.dist.matched || 0) + "</b>") +
-        "</div>" +
-        '<div class="section-grid" style="margin-top:18px">' +
-          distCard("用户套餐分布", u.plan_dist) +
-          distCard("线索状态分布", l.dist) +
-          distCard("入驻审核分布", it.dist) +
-          distCard("双盲状态分布", pr.dist) +
-        "</div>" +
-        '<div class="card" style="margin-top:18px"><div class="card-title">最近审计日志 <span class="sub">操作留痕</span></div>' +
-          '<div id="audit-box"><div class="empty">加载中…</div></div></div>';
+  // ============ Dashboard ============
+  async function renderDashboard(root){
+    root.innerHTML='<div class="empty">\u52a0\u8f7d\u4e2d...</div>';
+    try{
+      var d=await api("/admin/dashboard");
+      var u=d.users,l=d.leads,it=d.intakes,iv=d.invites,pr=d.pricing;
+      root.innerHTML=
+        '<div class="metrics">'+
+          metric(u.total,"\u6ce8\u518c\u7528\u6237","\u4eca\u65e5\u65b0\u589e <b>"+u.today_new+"</b>","\u5df2\u8ba4\u8bc1 <b>"+u.verified+"</b>")+
+          metric(l.total,"\u5546\u52a1\u7ebf\u7d22","\u5f85\u5904\u7406 <b>"+(l.dist.pending||0)+"</b>","\u672a\u5206\u914d <b>"+l.unassigned+"</b>")+
+          metric(it.total,"\u5165\u9a7b\u7533\u8bf7","\u5f85\u5ba1 <b>"+(it.dist.pending_review||0)+"</b>","\u5df2\u901a\u8fc7 <b>"+(it.dist.approved||0)+"</b>")+
+          metric(iv.total,"\u9080\u8bf7\u7801","\u6d3b\u8dc3 <b>"+iv.active+"</b>")+
+          metric(pr.total,"\u53cc\u76f2\u64cb\u5408","\u5f00\u653e <b>"+(pr.dist.open||0)+"</b>","\u5df2\u5339\u914d <b>"+(pr.dist.matched||0)+"</b>")+
+        '</div>'+
+        '<div class="section-grid" style="margin-top:18px">'+
+          distCard("\u7528\u6237\u5957\u9910\u5206\u5e03",u.plan_dist)+
+          distCard("\u7ebf\u7d22\u72b6\u6001\u5206\u5e03",l.dist)+
+          distCard("\u5165\u9a7b\u5ba1\u6838\u5206\u5e03",it.dist)+
+          distCard("\u53cc\u76f2\u72b6\u6001\u5206\u5e03",pr.dist)+
+        '</div>'+
+        '<div class="card" style="margin-top:18px"><div class="card-title">\u6700\u8fd1\u5ba1\u8ba1\u65e5\u5fd7 <span class="sub">\u64cd\u4f5c\u7559\u75d5</span></div>'+
+          '<div id="audit-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div></div>';
       loadAudit($("#audit-box"));
-    } catch (e) {
-      root.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + "</div>";
-    }
+    }catch(e){root.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
   }
-  function metric(val, label, r1, r2) {
-    let rows = '<div class="m-row">';
-    if (r1) rows += "<span>" + r1 + "</span>";
-    if (r2) rows += "<span>" + r2 + "</span>";
-    rows += "</div>";
-    return '<div class="metric"><div class="m-val">' + val + '</div><div class="m-label">' + label + "</div>" + rows + "</div>";
-  }
-  function distCard(title, dist) {
-    let rows = "";
-    Object.keys(dist).forEach((k) => { rows += "<div style='display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9'><span>" + k + "</span><b>" + dist[k] + "</b></div>"; });
-    return '<div class="card"><div class="card-title">' + title + "</div>" + (rows || "<div class='muted'>—</div>") + "</div>";
-  }
-  async function loadAudit(box) {
-    try {
-      const a = await api("/admin/dashboard/audit?limit=30");
-      if (!a.items.length) { box.innerHTML = '<div class="empty">暂无记录</div>'; return; }
-      let rows = a.items.map((r) =>
-        "<tr><td>" + fmtTime(r.created_at) + "</td><td>" + esc(r.staff_name) + "</td><td>" + esc(r.action) +
-        "</td><td>" + esc(r.target_type) + (r.target_id ? "#" + esc(r.target_id) : "") + "</td><td class='muted'>" + (r.ip || "—") + "</td></tr>"
-      ).join("");
-      box.innerHTML = '<div class="table-wrap"><table><thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th><th>IP</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
-    } catch (e) { box.innerHTML = '<div class="empty">审计加载失败</div>'; }
+  async function loadAudit(box){
+    try{
+      var a=await api("/admin/dashboard/audit?limit=30");
+      if(!a.items.length){box.innerHTML='<div class="empty\">\u6682\u65e0\u8bb0\u5f55</div>';return;}
+      var rows=a.items.map(function(r){
+        return "<tr><td>"+fmtTime(r.created_at)+"</td><td>"+esc(r.staff_name)+"</td><td>"+esc(r.action)+
+        "</td><td>"+esc(r.target_type)+(r.target_id?"#"+esc(r.target_id):"")+"</td><td class='muted'>"+(r.ip||"\u2014")+"</td></tr>";
+      }).join("");
+      box.innerHTML='<div class="table-wrap"><table><thead><tr><th>\u65f6\u95f4</th><th>\u64cd\u4f5c\u4eba</th><th>\u52a8\u4f5c</th><th>\u5bf9\u8c61</th><th>IP</th></tr></thead><tbody>'+rows+"</tbody></table></div>";
+    }catch(e){box.innerHTML='<div class="empty">\u5ba1\u8ba1\u52a0\u8f7d\u5931\u8d25</div>';}
   }
 
-  // ============ 用户管理 ============
-  let usersState = { page: 1, q: "", plan: "", verified: "", active: "" };
-  async function renderUsers(root) {
-    root.innerHTML =
-      '<div class="toolbar">' +
-        '<input id="u-q" placeholder="手机号/昵称/公司/姓名" style="width:240px">' +
-        '<select id="u-plan"><option value="">全部套餐</option><option>free</option><option>personal</option><option>professional</option><option>enterprise</option></select>' +
-        '<select id="u-verified"><option value="">认证不限</option><option value="1">已认证</option><option value="0">未认证</option></select>' +
-        '<select id="u-active"><option value="">状态不限</option><option value="1">启用</option><option value="0">停用</option></select>' +
-        '<button class="btn-primary btn" id="u-search">查询</button>' +
-      "</div>" +
-      '<div id="u-box"><div class="empty">加载中…</div></div>';
-    $("#u-q").value = usersState.q; $("#u-plan").value = usersState.plan;
-    $("#u-verified").value = usersState.verified; $("#u-active").value = usersState.active;
-    $("#u-search").onclick = () => {
-      usersState.q = $("#u-q").value.trim();
-      usersState.plan = $("#u-plan").value;
-      usersState.verified = $("#u-verified").value;
-      usersState.active = $("#u-active").value;
-      usersState.page = 1;
-      loadUsers();
-    };
-    loadUsers();
+  // ============ Users ============
+  var usersState={page:1,q:"",plan:"",verified:"",active:""};
+  async function renderUsers(root){
+    root.innerHTML=
+      '<div class="toolbar">'+
+        '<input id="u-q" placeholder="\u624b\u673a\u53f7/\u6635\u79f0/\u516c\u53f8/\u59d3\u540d" style="width:240px">'+
+        '<select id="u-plan"><option value="">\u5168\u90e8\u5957\u9910</option><option>free</option><option>personal</option><option>professional</option><option>enterprise</option></select>'+
+        '<select id="u-verified"><option value="">\u8ba4\u8bc1\u4e0d\u9650</option><option value="1">\u5df2\u8ba4\u8bc1</option><option value="0">\u672a\u8ba4\u8bc1</option></select>'+
+        '<select id="u-active"><option value="">\u72b6\u6001\u4e0d\u9650</option><option value="1">\u542f\u7528</option><option value="0">\u505c\u7528</option></select>'+
+        '<button class="btn-primary btn" id="u-search">\u67e5\u8be2</button>'+
+      '</div>'+
+      '<div id="u-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div>';
+    $("#u-q").value=usersState.q;$("#u-plan").value=usersState.plan;
+    $("#u-verified").value=usersState.verified;$("#u-active").value=usersState.active;
+    $("#u-search").onclick=function(){
+      usersState.q=$("#u-q").value.trim();usersState.plan=$("#u-plan").value;
+      usersState.verified=$("#u-verified").value;usersState.active=$("#u-active").value;
+      usersState.page=1;loadUsers();
+    };loadUsers();
 
-    async function loadUsers() {
-      const box = $("#u-box");
-      box.innerHTML = '<div class="empty">加载中…</div>';
-      try {
-        let qs = "?page=" + usersState.page + "&page_size=20";
-        if (usersState.q) qs += "&q=" + encodeURIComponent(usersState.q);
-        if (usersState.plan) qs += "&user_type=" + usersState.plan;
-        if (usersState.verified) qs += "&verified=" + usersState.verified;
-        if (usersState.active) qs += "&is_active=" + usersState.active;
-        const d = await api("/admin/users" + qs);
-        if (!d.items.length) { box.innerHTML = '<div class="empty">无匹配用户</div>'; return; }
-        let rows = d.items.map((u) =>
-          "<tr data-id='" + u.id + "' style='cursor:pointer'>" +
-          "<td>" + u.id + "</td><td>" + esc(u.phone || "—") + "</td><td>" + esc(u.nickname || "—") + "</td>" +
-          "<td>" + esc(u.company || "—") + "</td><td>" + badge(u.user_type, "b-" + u.user_type) + "</td>" +
-          "<td>" + (u.verified ? badge("已认证", "b-yes") : badge("未认证", "b-no")) + "</td>" +
-          "<td>" + (u.is_active ? badge("启用", "b-active") : badge("停用", "b-inactive")) + "</td>" +
-          "<td class='muted'>" + fmtTime(u.created_at) + "</td></tr>"
-        ).join("");
-        box.innerHTML = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>手机号</th><th>昵称</th><th>公司</th><th>套餐</th><th>认证</th><th>状态</th><th>注册时间</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
-          pager(d.total, d.page, d.page_size);
-        box.querySelectorAll("tbody tr").forEach((tr) => { tr.onclick = () => openUserDetail(tr.dataset.id); });
-        bindPager(d, loadUsers);
-      } catch (e) { box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + "</div>"; }
+    async function loadUsers(){
+      var box=$("#u-box");
+      box.innerHTML='<div class="empty">\u52a0\u8f7d\u4e2d...</div>';
+      try{
+        var qs="?page="+usersState.page+"&page_size=20";
+        if(usersState.q)qs+="&q="+encodeURIComponent(usersState.q);
+        if(usersState.plan)qs+="&user_type="+usersState.plan;
+        if(usersState.verified)qs+="&verified="+usersState.verified;
+        if(usersState.active)qs+="&is_active="+usersState.active;
+        var d=await api("/admin/users"+qs);
+        if(!d.items.length){box.innerHTML='<div class="empty">\u65e0\u5339\u914d\u7528\u6237</div>';return;}
+        var rows=d.items.map(function(u){
+          return "<tr data-id='"+u.id+"' style='cursor:pointer'>"+
+          "<td>"+u.id+"</td><td>"+esc(u.phone||"\u2014")+"</td><td>"+esc(u.nickname||"\u2014")+"</td>"+
+          "<td>"+esc(u.company||"\u2014")+"</td><td>"+badge(u.user_type,"b-"+u.user_type)+"</td>"+
+          "<td>"+(u.verified?badge("\u5df2\u8ba4\u8bc1","b-yes"):badge("\u672a\u8ba4\u8bc1","b-no"))+"</td>"+
+          "<td>"+(u.is_active?badge("\u542f\u7528","b-active"):badge("\u505c\u7528","b-inactive"))+"</td>"+
+          "<td class='muted'>"+fmtTime(u.created_at)+"</td></tr>";
+        }).join("");
+        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u624b\u673a\u53f7</th><th>\u6635\u79f0</th><th>\u516c\u53f8</th><th>\u5957\u9910</th><th>\u8ba4\u8bc1</th><th>\u72b6\u6001</th><th>\u6ce8\u518c\u65f6\u95f4</th></tr></thead><tbody>'+rows+"</tbody></table></div>"+pager(d.total,d.page,d.page_size);
+        box.querySelectorAll("tbody tr").forEach(function(tr){tr.onclick=function(){openUserDetail(tr.dataset.id);};});
+        bindPager(d,loadUsers);
+      }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
     }
   }
 
-  async function openUserDetail(id) {
-    const d = await api("/admin/users/" + id);
-    const canEdit = hasPerm("user:edit");
-    let html = '<h3>用户详情 #' + d.id + "</h3><div class='kv'>" +
-      kv("手机号", esc(d.phone)) + kv("昵称", esc(d.nickname)) + kv("公司", esc(d.company)) +
-      kv("角色", esc(d.role)) + kv("套餐", badge(d.user_type, "b-" + d.user_type)) +
-      kv("实名", (d.verified ? badge("已认证", "b-yes") : badge("未认证", "b-no")) + (d.verify_type ? " (" + esc(d.verify_type) + ")" : "")) +
-      kv("真实姓名", esc(d.real_name)) + kv("状态", d.is_active ? "启用" : "停用") +
-      kv("邀请来源", esc(d.invited_by || "—")) + kv("注册", fmtTime(d.created_at)) + kv("最近登录", fmtTime(d.last_login_at)) +
+  async function openUserDetail(id){
+    var d=await api("/admin/users/"+id);
+    var canEdit=hasPerm("user:edit");
+    var html='<h3>\u7528\u6237\u8be6\u60c5 #'+d.id+"</h3><div class='kv'>"+
+      kv("\u624b\u673a\u53f7",esc(d.phone))+kv("\u6635\u79f0",esc(d.nickname))+kv("\u516c\u53f8",esc(d.company))+
+      kv("\u89d2\u8272",esc(d.role))+kv("\u5957\u9910",badge(d.user_type,"b-"+d.user_type))+
+      kv("\u5b9e\u540d",(d.verified?badge("\u5df2\u8ba4\u8bc1","b-yes"):badge("\u672a\u8ba4\u8bc1","b-no"))+(d.verify_type?" ("+esc(d.verify_type)+")":""))+
+      kv("\u771f\u5b9e\u59d3\u540d",esc(d.real_name))+kv("\u72b6\u6001",d.is_active?"\u542f\u7528":"\u505c\u7528")+
+      kv("\u9080\u8bf7\u6765\u6e90",esc(d.invited_by||"\u2014"))+kv("\u6ce8\u518c",fmtTime(d.created_at))+kv("\u6700\u8fd1\u767b\u5f55",fmtTime(d.last_login_at))+
       "</div>";
-    if (canEdit) {
-      html += '<div class="modal-actions"><button class="btn" id="u-plan-btn">改套餐</button>' +
-        '<button class="btn" id="u-status-btn">' + (d.is_active ? "停用账号" : "启用账号") + "</button>" +
-        '<button class="btn" id="u-verify-btn">' + (d.verified ? "取消认证" : "标记认证") + "</button></div>";
+    if(canEdit){
+      html+='<div class="modal-actions"><button class="btn" id="u-plan-btn">\u6539\u5957\u9910</button>'+
+        '<button class="btn" id="u-status-btn">'+(d.is_active?"\u505c\u7528\u8d26\u53f7":"\u542f\u7528\u8d26\u53f7")+"</button>"+
+        '<button class="btn" id="u-verify-btn">'+(d.verified?"\u53d6\u6d88\u8ba4\u8bc1":"\u6807\u8bb0\u8ba4\u8bc1")+"</button></div>";
     }
-    html += '<div class="modal-actions"><button class="btn" id="u-close">关闭</button></div>';
+    html+='<div class="modal-actions"><button class="btn" id="u-close">\u5173\u95ed</button></div>';
     openModal(html);
-    $("#u-close").onclick = closeModal;
-    if (canEdit) {
-      $("#u-plan-btn").onclick = async () => {
-        const t = prompt("改为套餐(free/personal/professional/enterprise)：", d.user_type);
-        if (!t) return;
-        try { await api("/admin/users/" + id + "/plan", { method: "POST", body: { user_type: t.trim() } }); toast("已更新套餐", "ok"); closeModal(); renderUsers($("#page")); } catch (e) { toast(e.message, "err"); }
+    $("#u-close").onclick=closeModal;
+    if(canEdit){
+      $("#u-plan-btn").onclick=async function(){
+        var t=prompt("\u6539\u4e3a\u5957\u9910(free/personal/professional/enterprise)\uff1a",d.user_type);
+        if(!t)return;
+        try{await api("/admin/users/"+id+"/plan",{method:"POST",body:{user_type:t.trim()}});toast("\u5df2\u66f4\u65b0\u5957\u9910","ok");closeModal();renderUsers($("#page"));}catch(e){toast(e.message,"err");}
       };
-      $("#u-status-btn").onclick = async () => {
-        try { await api("/admin/users/" + id + "/status", { method: "POST", body: { is_active: !d.is_active } }); toast("已更新状态", "ok"); closeModal(); renderUsers($("#page")); } catch (e) { toast(e.message, "err"); }
+      $("#u-status-btn").onclick=async function(){
+        try{await api("/admin/users/"+id+"/status",{method:"POST",body:{is_active:!d.is_active}});toast("\u5df2\u66f4\u65b0\u72b6\u6001","ok");closeModal();renderUsers($("#page"));}catch(e){toast(e.message,"err");}
       };
-      $("#u-verify-btn").onclick = async () => {
-        try { await api("/admin/users/" + id + "/verify", { method: "POST", body: { verified: !d.verified, verify_type: "company" } }); toast("已更新认证", "ok"); closeModal(); renderUsers($("#page")); } catch (e) { toast(e.message, "err"); }
+      $("#u-verify-btn").onclick=async function(){
+        try{await api("/admin/users/"+id+"/verify",{method:"POST",body:{verified:!d.verified,verify_type:"company"}});toast("\u5df2\u66f4\u65b0\u8ba4\u8bc1","ok");closeModal();renderUsers($("#page"));}catch(e){toast(e.message,"err");}
       };
     }
   }
 
-  // ============ 邀请码 ============
-  async function renderInvites(root) {
-    const canCreate = hasPerm("invite:create");
-    root.innerHTML =
-      (canCreate ? '<div class="toolbar"><button class="btn-primary btn" id="i-gen">+ 生成邀请码</button></div>' : "") +
-      '<div id="i-box"><div class="empty">加载中…</div></div>';
-    if (canCreate) $("#i-gen").onclick = openGenInvite;
+  // ============ Invites ============
+  async function renderInvites(root){
+    var canCreate=hasPerm("invite:create");
+    root.innerHTML=
+      (canCreate?'<div class="toolbar"><button class="btn-primary btn" id="i-gen">+ \u751f\u6210\u9080\u8bf7\u7801</button></div>':"")+
+      '<div id="i-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div>';
+    if(canCreate)$("#i-gen").onclick=openGenInvite;
     loadInvites();
 
-    async function loadInvites() {
-      const box = $("#i-box");
-      box.innerHTML = '<div class="empty">加载中…</div>';
-      try {
-        const d = await api("/admin/invites");
-        const s = d.stats;
-        let info = '<div class="metrics" style="margin-bottom:16px"><div class="metric"><div class="m-val">' + s.total + '</div><div class="m-label">总数</div></div>' +
-          '<div class="metric"><div class="m-val">' + s.active + '</div><div class="m-label">活跃</div></div>' +
-          '<div class="metric"><div class="m-val">' + s.used_total + '</div><div class="m-label">累计使用</div></div>' +
-          '<div class="metric"><div class="m-val">' + s.expired + '</div><div class="m-label">已过期</div></div></div>';
-        if (!d.items.length) { box.innerHTML = info + '<div class="empty">暂无邀请码</div>'; return; }
-        const canRevoke = hasPerm("invite:revoke");
-        let rows = d.items.map((i) =>
-          "<tr data-id='" + i.id + "'>" +
-          "<td><code>" + esc(i.code) + "</code></td><td>" + esc(i.note || "—") + "</td>" +
-          "<td>" + (i.is_active ? badge("启用", "b-active") : badge("停用", "b-inactive")) + "</td>" +
-          "<td>" + i.used_count + " / " + i.max_uses + "</td>" +
-          "<td class='muted'>" + fmtTime(i.valid_until) + "</td>" +
-          (canRevoke ? "<td><button class='btn btn-sm' data-toggle='" + i.id + "'>" + (i.is_active ? "停用" : "启用") + "</button></td>" : "<td></td>") +
-          "</tr>"
-        ).join("");
-        box.innerHTML = info + '<div class="table-wrap"><table><thead><tr><th>邀请码</th><th>备注</th><th>状态</th><th>使用</th><th>有效期至</th><th>操作</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
-        if (canRevoke) box.querySelectorAll("[data-toggle]").forEach((b) => {
-          b.onclick = async () => {
-            try { await api("/admin/invites/" + b.dataset.toggle + "/toggle", { method: "POST", body: { is_active: b.textContent.trim() === "启用" } }); toast("已切换状态", "ok"); loadInvites(); } catch (e) { toast(e.message, "err"); }
+    async function loadInvites(){
+      var box=$("#i-box");
+      box.innerHTML='<div class="empty">\u52a0\u8f7d\u4e2d...</div>';
+      try{
+        var d=await api("/admin/invites");
+        var s=d.stats;
+        var info='<div class="metrics" style="margin-bottom:16px"><div class="metric"><div class="m-val">'+s.total+'</div><div class="m-label">\u603b\u6570</div></div>'+
+          '<div class="metric"><div class="m-val">'+s.active+'</div><div class="m-label">\u6d3b\u8dc3</div></div>'+
+          '<div class="metric"><div class="m-val">'+s.used_total+'</div><div class="m-label">\u7d2f\u8ba1\u4f7f\u7528</div></div>'+
+          '<div class="metric"><div class="m-val">'+s.expired+'</div><div class="m-label">\u5df2\u8fc7\u671f</div></div></div>';
+        if(!d.items.length){box.innerHTML=info+'<div class="empty">\u6682\u65e0\u9080\u8bf7\u7801</div>';return;}
+        var canRevoke=hasPerm("invite:revoke");
+        var rows=d.items.map(function(i){
+          return "<tr data-id='"+i.id+"'>"+
+          "<td><code>"+esc(i.code)+"</code></td><td>"+esc(i.note||"\u2014")+"</td>"+
+          "<td>"+(i.is_active?badge("\u542f\u7528","b-active"):badge("\u505c\u7528","b-inactive"))+"</td>"+
+          "<td>"+i.used_count+" / "+i.max_uses+"</td>"+
+          "<td class='muted'>"+fmtTime(i.valid_until)+"</td>"+
+          (canRevoke?"<td><button class='btn btn-sm' data-toggle='"+i.id+"'>"+(i.is_active?"\u505c\u7528":"\u542f\u7528")+"</button></td>":"<td></td>")+
+          "</tr>";
+        }).join("");
+        box.innerHTML=info+'<div class="table-wrap"><table><thead><tr><th>\u9080\u8bf7\u7801</th><th>\u5907\u6ce8</th><th>\u72b6\u6001</th><th>\u4f7f\u7528</th><th>\u6709\u6548\u671f</th><th>\u64cd\u4f5c</th></tr></thead><tbody>'+rows+"</tbody></table></div>";
+        if(canRevoke)box.querySelectorAll("[data-toggle]").forEach(function(b){
+          b.onclick=async function(){
+            try{await api("/admin/invites/"+b.dataset.toggle+"/toggle",{method:"POST",body:{is_active:b.textContent.trim()==="\u542f\u7528"}});toast("\u5df2\u5207\u6362\u72b6\u6001","ok");loadInvites();}catch(e){toast(e.message,"err");}
           };
         });
-      } catch (e) { box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + "</div>"; }
+      }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
     }
   }
-  function openGenInvite() {
-    openModal("<h3>生成邀请码</h3>" +
-      '<div class="field"><label>数量</label><input id="g-count" type="number" min="1" max="100" value="1"></div>' +
-      '<div class="field"><label>备注</label><input id="g-note" placeholder="如：小红书KOL内测"></div>' +
-      '<div class="field"><label>每个码最大使用次数</label><input id="g-max" type="number" min="1" value="1"></div>' +
-      '<div class="field"><label>有效天数</label><input id="g-days" type="number" min="1" value="30"></div>' +
-      '<div class="modal-actions"><button class="btn" id="g-cancel">取消</button><button class="btn-primary btn" id="g-ok">生成</button></div>');
-    $("#g-cancel").onclick = closeModal;
-    $("#g-ok").onclick = async () => {
-      const body = { count: +$("#g-count").value, note: $("#g-note").value.trim(), max_uses: +$("#g-max").value, valid_days: +$("#g-days").value };
-      try { const r = await api("/admin/invites", { method: "POST", body }); toast("已生成 " + r.created.length + " 个", "ok"); closeModal(); renderInvites($("#page")); } catch (e) { toast(e.message, "err"); }
+  function openGenInvite(){
+    openModal("<h3>\u751f\u6210\u9080\u8bf7\u7801</h3>"+
+      field("\u6570\u91cf","<input id='g-count' type='number' min='1' max='100' value='1'>")+
+      field("\u5907\u6ce8","<input id='g-note' placeholder='\u5982\uff1a\u5c0f\u7ea2\u4e66KOL\u5185\u6d4b'>")+
+      field("\u5355\u4e2a\u7801\u6700\u5927\u4f7f\u7528\u6b21\u6570","<input id='g-max' type='number' min='1' value='1'>")+
+      field("\u6709\u6548\u5929\u6570","<input id='g-days' type='number' min='1' value='30'>")+
+      "<div class='modal-actions'><button class='btn' id='g-cancel'>\u53d6\u6d88</button><button class='btn-primary btn' id='g-ok'>\u751f\u6210</button></div>");
+    $("#g-cancel").onclick=closeModal;
+    $("#g-ok").onclick=async function(){
+      var body={count:+$("#g-count").value,note:$("#g-note").value.trim(),max_uses:+$("#g-max").value,valid_days:+$("#g-days").value};
+      try{var r=await api("/admin/invites",{method:"POST",body});toast("\u5df2\u751f\u6210 "+r.created.length+" \u4e2a","ok");closeModal();renderInvites($("#page"));}catch(e){toast(e.message,"err");}
     };
   }
 
-  // ============ 商务线索 ============
-  let leadsState = { page: 1, status: "", role: "", assignee: "" };
-  async function renderLeads(root) {
-    root.innerHTML =
-      '<div class="toolbar">' +
-        '<select id="l-status"><option value="">全部状态</option><option value="pending">待处理</option><option value="contacted">已联系</option><option value="converted">已转化</option><option value="rejected">已驳回</option></select>' +
-        '<input id="l-role" placeholder="角色(brand/mcn/agency…)" style="width:180px">' +
-        '<input id="l-assignee" placeholder="负责人(留空=未分配)" style="width:180px">' +
-        '<button class="btn-primary btn" id="l-search">查询</button>' +
-      "</div><div id='l-box'><div class='empty'>加载中…</div></div>";
-    $("#l-search").onclick = () => { leadsState.status = $("#l-status").value; leadsState.role = $("#l-role").value.trim(); leadsState.assignee = $("#l-assignee").value.trim(); leadsState.page = 1; loadLeads(); };
+  // ============ Leads ============
+  var leadsState={page:1,status:"",role:"",assignee:""};
+  async function renderLeads(root){
+    root.innerHTML=
+      '<div class="toolbar">'+
+        '<select id="l-status"><option value="">\u5168\u90e8\u72b6\u6001</option><option value="pending">\u5f85\u5904\u7406</option><option value="contacted">\u5df2\u8054\u7cfb</option><option value="converted">\u5df2\u8f6c\u5316</option><option value="rejected">\u5df2\u9a73\u56de</option></select>'+
+        '<input id="l-role" placeholder="\u89d2\u8272(brand/mcn/agency\u2026)" style="width:180px">'+
+        '<input id="l-assignee" placeholder="\u8d1f\u8d23\u4eba(\u7559\u7a7a=\u672a\u5206\u914d)" style="width:180px">'+
+        '<button class="btn-primary btn" id="l-search">\u67e5\u8be2</button>'+
+      "</div><div id='l-box'><div class='empty'>\u52a0\u8f7d\u4e2d...</div></div>";
+    $("#l-search").onclick=function(){leadsState.status=$("#l-status").value;leadsState.role=$("#l-role").value.trim();leadsState.assignee=$("#l-assignee").value.trim();leadsState.page=1;loadLeads();};
     loadLeads();
 
-    async function loadLeads() {
-      const box = $("#l-box");
-      box.innerHTML = '<div class="empty">加载中…</div>';
-      try {
-        let qs = "?page=" + leadsState.page + "&page_size=20";
-        if (leadsState.status) qs += "&status=" + leadsState.status;
-        if (leadsState.role) qs += "&role=" + encodeURIComponent(leadsState.role);
-        if (leadsState.assignee) qs += "&assignee=" + encodeURIComponent(leadsState.assignee);
-        const d = await api("/admin/leads" + qs);
-        if (!d.items.length) { box.innerHTML = '<div class="empty">无匹配线索</div>'; return; }
-        let rows = d.items.map((l) =>
-          "<tr data-id='" + l.id + "' style='cursor:pointer'><td>" + l.id + "</td><td>" + esc(l.company || "—") + "</td><td>" + esc(l.contact_name) + "</td>" +
-          "<td>" + esc(l.role || "—") + "</td><td>" + badge(l.status, "b-" + l.status) + "</td><td>" + (l.assignee ? esc(l.assignee) : "<span class='muted'>未分配</span>") + "</td>" +
-          "<td class='muted'>" + fmtTime(l.created_at) + "</td></tr>"
-        ).join("");
-        box.innerHTML = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>公司</th><th>联系人</th><th>角色</th><th>状态</th><th>负责人</th><th>提交时间</th></tr></thead><tbody>' + rows + "</tbody></table></div>" + pager(d.total, d.page, d.page_size);
-        box.querySelectorAll("tbody tr").forEach((tr) => { tr.onclick = () => openLeadDetail(tr.dataset.id); });
-        bindPager(d, loadLeads);
-      } catch (e) { box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + "</div>"; }
+    async function loadLeads(){
+      var box=$("#l-box");
+      box.innerHTML='<div class="empty">\u52a0\u8f7d\u4e2d...</div>';
+      try{
+        var qs="?page="+leadsState.page+"&page_size=20";
+        if(leadsState.status)qs+="&status="+leadsState.status;
+        if(leadsState.role)qs+="&role="+encodeURIComponent(leadsState.role);
+        if(leadsState.assignee)qs+="&assignee="+encodeURIComponent(leadsState.assignee);
+        var d=await api("/admin/leads"+qs);
+        if(!d.items.length){box.innerHTML='<div class="empty">\u65e0\u5339\u914d\u7ebf\u7d22</div>';return;}
+        var rows=d.items.map(function(l){
+          return "<tr data-id='"+l.id+"' style='cursor:pointer'><td>"+l.id+"</td><td>"+esc(l.company||"\u2014")+"</td><td>"+esc(l.contact_name)+"</td>"+
+          "<td>"+esc(l.role||"\u2014")+"</td><td>"+badge(l.status,"b-"+l.status)+"</td><td>"+(l.assignee?esc(l.assignate):"<span class='muted'>\u672a\u5206\u914d</span>")+"</td>"+
+          "<td class='muted'>"+fmtTime(l.created_at)+"</td></tr>";
+        }).join("");
+        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u516c\u53f8</th><th>\u8054\u7cfb\u4eba</th><th>\u89d2\u8272</th><th>\u72b6\u6001</th><th>\u8d1f\u8d23\u4eba</th><th>\u63d0\u4ea4\u65f6\u95f4</th></tr></thead><tbody>'+rows+"</tbody></table></div>"+pager(d.total,d.page,d.page_size);
+        box.querySelectorAll("tbody tr").forEach(function(tr){tr.onclick=function(){openLeadDetail(tr.dataset.id);};});
+        bindPager(d,loadLeads);
+      }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
     }
   }
-
-  async function openLeadDetail(id) {
-    const d = await api("/admin/leads/" + id);
-    const canAssign = hasPerm("lead:assign"), canEdit = hasPerm("lead:edit"), canConvert = hasPerm("lead:convert");
-    let html = "<h3>线索详情 #" + d.id + "</h3><div class='kv'>" +
-      kv("公司", esc(d.company)) + kv("联系人", esc(d.contact_name)) + kv("角色", esc(d.role)) +
-      kv("电话", esc(d.contact_phone || "—")) + kv("邮箱", esc(d.contact_email || "—")) + kv("微信", esc(d.contact_wechat || "—")) +
-      kv("意向套餐", badge(d.plan_interest, "b-" + d.plan_interest)) + kv("使用场景", esc(d.use_case || "—")) +
-      kv("留言", esc(d.message || "—")) + kv("状态", badge(d.status, "b-" + d.status)) +
-      kv("负责人", esc(d.assignee || "未分配")) + kv("备注", esc(d.admin_note || "—")) + kv("提交", fmtTime(d.created_at)) +
-      (d.user ? kv("关联用户", "#" + d.user.id + " " + esc(d.user.phone) + " (" + badge(d.user.user_type, "b-" + d.user.user_type) + ")") : "") +
+  async function openLeadDetail(id){
+    var d=await api("/admin/leads/"+id);
+    var canAssign=hasPerm("lead:assign"),canEdit=hasPerm("lead:edit"),canConvert=hasPerm("lead:convert");
+    var html="<h3>\u7ebf\u7d22\u8be6\u60c5 #"+d.id+"</h3><div class='kv'>"+
+      kv("\u516c\u53f8",esc(d.company))+kv("\u8054\u7cfb\u4eba",esc(d.contact_name))+kv("\u89d2\u8272",esc(d.role))+
+      kv("\u7535\u8bdd",esc(d.contact_phone||"\u2014"))+kv("\u90ae\u7bb1",esc(d.contact_email||"\u2014"))+kv("\u5fae\u4fe1",esc(d.contact_wechat||"\u2014"))+
+      kv("\u610f\u5411\u5957\u9910",badge(d.plan_interest,"b-"+d.plan_interest))+kv("\u4f7f\u7528\u573a\u666f",esc(d.use_case||"\u2014"))+
+      kv("\u7559\u8a00",esc(d.message||"\u2014"))+kv("\u72b6\u6001",badge(d.status,"b-"+d.status))+
+      kv("\u8d1f\u8d23\u4eba",esc(d.assignee||"\u672a\u5206\u914d"))+kv("\u5907\u6ce8",esc(d.admin_note||"\u2014"))+kv("\u63d0\u4ea4",fmtTime(d.created_at))+
+      (d.user?kv("\u5173\u8054\u7528\u6237","#"+d.user.id+" "+esc(d.phone)+" ("+badge(d.user.user_type,"b-"+d.user.user_type)+")"):"")+
       "</div>";
-    let acts = '<div class="modal-actions">';
-    if (canAssign) acts += '<button class="btn" id="ld-assign">分配/认领</button>';
-    if (canEdit) acts += '<button class="btn" id="ld-note">编辑备注</button><button class="btn" id="ld-status">改状态</button>';
-    if (canConvert) acts += '<button class="btn-ok btn" id="ld-convert">转化为开通套餐</button>';
-    acts += '<button class="btn" id="ld-close">关闭</button></div>';
-    openModal(html + acts);
-    $("#ld-close").onclick = closeModal;
-    if (canAssign) $("#ld-assign").onclick = async () => {
-      const a = prompt("分配负责人用户名(留空=取消分配)：", d.assignee || "");
-      if (a === null) return;
-      try { await api("/admin/leads/" + id + "/assign", { method: "POST", body: { assignee: a.trim() } }); toast("已分配", "ok"); closeModal(); renderLeads($("#page")); } catch (e) { toast(e.message, "err"); }
+    var acts='<div class="modal-actions">';
+    if(canAssign) acts+='<button class="btn" id="ld-assign">\u5206\u914d/\u8ba4\u9886</button>';
+    if(canEdit) acts+='<button class="btn" id="ld-note">\u7f16\u8f91\u5907\u6ce8</button><button class="btn" id="ld-status">\u6539\u72b6\u6001</button>';
+    if(canConvert) acts+='<button class="btn-ok btn" id="ld-convert">\u8f6c\u5316\u4e3a\u5f00\u901a\u5957\u9910</button>';
+    acts+='<button class="btn" id="ld-close">\u5173\u95ed</button></div>';
+    openModal(html+acts);
+    $("#ld-close").onclick=closeModal;
+    if(canAssign)$("#ld-assign").onclick=async function(){
+      var a=prompt("\u5206\u914d\u8d1f\u8d23\u4eba\u7528\u6237\u540d(\u7559\u7a7a=\u53d6\u6d88\u5206\u914d)\uff1a",d.assignee||"");
+      if(a===null)return;
+      try{await api("/admin/leads/"+id+"/assign",{method:"POST",body:{assignee:a.trim()}});toast("\u5df2\u5206\u914d","ok");closeModal();renderLeads($("#page"));}catch(e){toast(e.message,"err");}
     };
-    if (canEdit) {
-      $("#ld-note").onclick = async () => {
-        const n = prompt("备注：", d.admin_note || "");
-        if (n === null) return;
-        try { await api("/admin/leads/" + id + "/note", { method: "POST", body: { admin_note: n } }); toast("已保存", "ok"); closeModal(); renderLeads($("#page")); } catch (e) { toast(e.message, "err"); }
+    if(canEdit){
+      $("#ld-note").onclick=async function(){
+        var n=prompt("\u5907\u6ce8\uff1a",d.admin_note||"");
+        if(n===null)return;
+        try{await api("/admin/leads/"+id+"/note",{method:"POST",body:{admin_note:n}});toast("\u5df2\u4fdd\u5b58","ok");closeModal();renderLeads($("#page"));}catch(e){toast(e.message,"err");}
       };
-      $("#ld-status").onclick = async () => {
-        const s = prompt("状态(pending/contacted/converted/rejected)：", d.status);
-        if (!s) return;
-        try { await api("/admin/leads/" + id + "/status", { method: "POST", body: { status: s.trim() } }); toast("已更新", "ok"); closeModal(); renderLeads($("#page")); } catch (e) { toast(e.message, "err"); }
+      $("#ld-status").onclick=async function(){
+        var s=prompt("\u72b6\u6001(pending/contacted/converted/rejected)\uff1a",d.status);
+        if(!s)return;
+        try{await api("/admin/leads/"+id+"/status",{method:"POST",body:{status:s.trim()}});toast("\u5df2\u66f4\u65b0","ok");closeModal();renderLeads($("#page"));}catch(e){toast(e.message,"err");}
       };
     }
-    if (canConvert) $("#ld-convert").onclick = async () => {
-      if (!confirm("确认转化？将把关联用户软转为 " + (d.plan_interest || "professional") + " 套餐。")) return;
-      try { await api("/admin/leads/" + id + "/convert", { method: "POST", body: {} }); toast("已转化", "ok"); closeModal(); renderLeads($("#page")); } catch (e) { toast(e.message, "err"); }
+    if(canConvert)$("#ld-convert").onclick=async function(){
+      if(!confirm("\u786e\u8ba4\u8f6c\u5316\uff1f\u5c06\u628a\u5173\u8054\u7528\u6237\u8f6f\u8f6c\u4e3a "+(d.plan_interest||"professional")+" \u5957\u9910\u3002"))return;
+      try{await api("/admin/leads/"+id+"/convert",{method:"POST",body:{}});toast("\u5df2\u8f6c\u5316","ok");closeModal();renderLeads($("#page"));}catch(e){toast(e.message,"err");}
     };
   }
 
-  // ============ 入驻审核 ============
-  let intakeState = { page: 1, status: "" };
-  async function renderIntake(root) {
-    root.innerHTML =
-      '<div class="toolbar"><select id="in-status"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已通过</option><option value="rejected">已驳回</option></select>' +
-      '<button class="btn-primary btn" id="in-search">查询</button></div><div id="in-box"><div class="empty">加载中…</div></div>';
-    $("#in-search").onclick = () => { intakeState.status = $("#in-status").value; intakeState.page = 1; loadIntake(); };
-    loadIntake();
+  // ============ Intake ============
+  var intakeState={page:1,status:""};
+  async function renderIntake(root){
+    root.innerHTML=
+      '<div class="toolbar"><select id="in-status"><option value="">\u5168\u90e8\u72b6\u6001</option><option value="pending_review">\u5f85\u5ba1\u6838</option><option value="approved">\u5df2\u901a\u8fc7</option><option value="rejected">\u5df2\u9a73\u56de</option></select>'+
+      '<button class="btn-primary btn" id="in-search">\u67e5\u8be2</button></div><div id="in-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div>';
+    $("#in-search").onclick=function(){intakeState.status=$("#in-status").value;intakeState.page=1;loadIntake();};loadIntake();
 
-    async function loadIntake() {
-      const box = $("#in-box");
-      box.innerHTML = '<div class="empty">加载中…</div>';
-      try {
-        let qs = "?page=" + intakeState.page + "&page_size=20";
-        if (intakeState.status) qs += "&status=" + intakeState.status;
-        const d = await api("/admin/intakes" + qs);
-        if (!d.items.length) { box.innerHTML = '<div class="empty">无申请</div>'; return; }
-        let rows = d.items.map((r) =>
-          "<tr data-id='" + r.id + "' style='cursor:pointer'><td>" + r.id + "</td><td>" + esc(r.name) + "</td><td>" + esc(r.agency || "—") + "</td><td>" + esc(r.category || "—") + "</td>" +
-          "<td>" + badge(r.status, "b-" + r.status) + "</td><td class='muted'>" + fmtTime(r.created_at) + "</td></tr>"
-        ).join("");
-        box.innerHTML = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>艺人</th><th>经纪公司</th><th>赛道</th><th>状态</th><th>提交时间</th></tr></thead><tbody>' + rows + "</tbody></table></div>" + pager(d.total, d.page, d.page_size);
-        box.querySelectorAll("tbody tr").forEach((tr) => { tr.onclick = () => openIntakeDetail(tr.dataset.id); });
-        bindPager(d, loadIntake);
-      } catch (e) { box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + "</div>"; }
+    async function loadIntake(){
+      var box=$("#in-box");
+      box.innerHTML='<div class="empty">\u52a0\u8f7d\u4e2d...</div>';
+      try{
+        var qs="?page="+intakeState.page+"&page_size=20";
+        if(intakeState.status)qs+="&status="+intakeState.status;
+        var d=await api("/admin/intakes"+qs);
+        if(!d.items.length){box.innerHTML='<div class="empty">\u65e0\u7533\u8bf7</div>';return;}
+        var rows=d.items.map(function(r){
+          return "<tr data-id='"+r.id+"' style='cursor:pointer'><td>"+r.id+"</td><td>"+esc(r.name)+"</td><td>"+esc(r.agency||"\u2014")+"</td><td>"+esc(r.category||"\u2014")+"</td>"+
+          "<td>"+badge(r.status,"b-"+r.status)+"</td><td class='muted'>"+fmtTime(r.created_at)+"</td></tr>";
+        }).join("");
+        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u827a\u4eba</th><th>\u7ecf\u7eaa\u516c\u53f8</th><th>\u8d5b\u9053</th><th>\u72b6\u6001</th><th>\u63d0\u4ea4\u65f6\u95f4</th></tr></thead><tbody>'+rows+"</tbody></table></div>"+pager(d.total,d.page,d.page_size);
+        box.querySelectorAll("tbody tr").forEach(function(tr){tr.onclick=function(){openIntakeDetail(tr.dataset.id);};});
+        bindPager(d,loadIntake);
+      }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
     }
   }
-  async function openIntakeDetail(id) {
-    const d = await api("/admin/intakes/" + id);
-    const canReview = hasPerm("intake:review");
-    let html = "<h3>入驻申请 #" + d.id + (d.status !== "pending_review" ? " · " + badge(d.status, "b-" + d.status) : "") + "</h3><div class='kv'>" +
-      kv("艺人名", esc(d.name)) + kv("性别", esc(d.gender || "—")) + kv("年龄", d.age || "—") + kv("生日", esc(d.birthday || "—")) +
-      kv("经纪公司", esc(d.agency || "—")) + kv("赛道", esc(d.category || "—")) + kv("微博粉丝", esc(d.weibo_fans || "—")) +
-      kv("抖音粉丝", esc(d.douyin_fans || "—")) + kv("人设标签", esc(d.persona_tags || "—")) + kv("联系方式", esc(d.contact || "—")) +
-      kv("社媒", esc(d.social_links || "—")) + kv("提交时间", fmtTime(d.created_at)) + kv("审核备注", esc(d.review_note || "—")) +
+  async function openIntakeDetail(id){
+    var d=await api("/admin/intakes/"+id);
+    var canReview=hasPerm("intake:review");
+    var html="<h3>\u5165\u9a7b\u7533\u8bf7 #"+d.id+(d.status!=="pending_review"?" \u00b7 "+badge(d.status,"b-"+d.status):"")+"</h3><div class='kv'>"+
+      kv("\u827a\u4eba\u540d",esc(d.name))+kv("\u6027\u522b",esc(d.gender||"\u2014"))+kv("\u5e74\u9f84",d.age||"\u2014")+kv("\u751f\u65e5",esc(d.birthday||"\u2014"))+
+      kv("\u7ecf\u7eaa\u516c\u53f8",esc(d.agency||"\u2014"))+kv("\u8d5b\u9053",esc(d.category||"\u2014"))+kv("\u5fae\u535a\u7c89\u4e1d",esc(d.weibo_fans||"\u2014"))+
+      kv("\u6296\u97f3\u7c89\u4e1d",esc(d.douyin_fans||"\u2014"))+kv("\u4eba\u8bbe\u6807\u7b7e",esc(d.persona_tags||"\u2014"))+kv("\u8054\u7cfb\u65b9\u5f0f",esc(d.contact||"\u2014"))+
+      kv("\u793e\u5a92",esc(d.social_links||"\u2014"))+kv("\u63d0\u4ea4\u65f6\u95f4",fmtTime(d.created_at))+kv("\u5ba1\u6838\u5907\u6ce8",esc(d.review_note||"\u2014"))+
       "</div>";
-    let acts = '<div class="modal-actions">';
-    if (canReview && d.status === "pending_review") acts += '<button class="btn-ok btn" id="in-approve">通过</button><button class="btn-danger btn" id="in-reject">驳回</button>';
-    acts += '<button class="btn" id="in-close">关闭</button></div>';
-    openModal(html + acts);
-    $("#in-close").onclick = closeModal;
-    if (canReview && d.status === "pending_review") {
-      const doReview = async (decision) => {
-        const note = prompt(decision === "approved" ? "通过备注(可选)：" : "驳回理由：", "");
-        if (note === null) return;
-        try { await api("/admin/intakes/" + id + "/review", { method: "POST", body: { decision, review_note: note } }); toast("已" + (decision === "approved" ? "通过" : "驳回"), "ok"); closeModal(); renderIntake($("#page")); } catch (e) { toast(e.message, "err"); }
+    var acts='<div class="modal-actions">';
+    if(canReview&&d.status==="pending_review") acts+='<button class="btn-ok btn" id="in-approve">\u901a\u8fc7</button><button class="btn-danger btn" id="in-reject">\u9a73\u56de</button>';
+    acts+='<button class="btn" id="in-close">\u5173\u95ed</button></div>';
+    openModal(html+acts);
+    $("#in-close").onclick=closeModal;
+    if(canReview&&d.status==="pending_review"){
+      var doReview=async function(decision){
+        var note=prompt(decision==="approved"?"\u901a\u8fc7\u5907\u6ce8(\u9009\u586b)\uff1a":"\u9a73\u56de\u7406\u7531\uff1a","");
+        if(note===null)return;
+        try{await api("/admin/intakes/"+id+"/review",{method:"POST",body:{decision,review_note:note}});toast("\u5df2"+(decision==="approved"?"\u901a\u8fc7":"\u9a73\u56de"),"ok");closeModal();renderIntake($("#page"));}catch(e){toast(e.message,"err");}
       };
-      $("#in-approve").onclick = () => doReview("approved");
-      $("#in-reject").onclick = () => doReview("rejected");
+      $("#in-approve").onclick=function(){doReview("approved");};
+      $("#in-reject").onclick=function(){doReview("rejected");};
     }
   }
 
-  // ============ 双盲撮合配置台 + 员工管理 (P2) ============
-  let pricingState = { page: 1, side: "", status: "" };
+  // ============ Staff & Pricing ============
+  var pricingState={page:1,side:"",status:""};
 
-  // ---------- 通用表单字段 ----------
-  function field(label, html) { return "<div class='field'><label>" + label + "</label>" + html + "</div>"; }
-
-  // ---------- 员工管理 ----------
-  async function renderStaff(root) {
-    const canManage = hasPerm("staff:manage");
-    const canPwd = hasPerm("self:password");
-    root.innerHTML =
-      '<div class="toolbar">' +
-        (canManage ? '<button class="btn-primary btn" id="s-new">+ 新建员工</button>' : "") +
-        (canPwd ? '<button class="btn" id="s-pwd">修改我的密码</button>' : "") +
-      '</div>' +
-      '<div id="s-box"><div class="empty">加载中…</div></div>';
-    if (canManage) $("#s-new").onclick = openNewStaff;
-    if (canPwd) $("#s-pwd").onclick = openChangePwd;
+  async function renderStaff(root){
+    var canManage=hasPerm("staff:manage"),canPwd=hasPerm("self:password");
+    root.innerHTML=
+      '<div class="toolbar">'+
+        (canManage?'<button class="btn-primary btn" id="s-new">+ \u65b0\u5efa\u5458\u5de5</button>':"")+
+        (canPwd?'<button class="btn" id="s-pwd">\u4fee\u6539\u6211\u7684\u5bc6\u7801</button>':"")+
+      '</div><div id="s-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div>';
+    if(canManage)$("#s-new").onclick=openNewStaff;
+    if(canPwd)$("#s-pwd").onclick=openChangePwd;
     loadStaff();
 
-    async function loadStaff() {
-      const box = $("#s-box");
-      box.innerHTML = '<div class="empty">加载中…</div>';
-      try {
-        const d = await api("/admin/staff");
-        if (!d.items.length) { box.innerHTML = '<div class="empty">暂无员工账号</div>'; return; }
-        const me = staff.id;
-        let rows = d.items.map((u) => {
-          const isMe = u.id === me;
-          let acts = "";
-          if (canManage) {
-            acts =
-              "<button class='btn btn-sm' data-role='" + u.id + "'" + (isMe ? " disabled title='不能修改自己角色'" : "") + ">改角色</button> " +
-              "<button class='btn btn-sm' data-status='" + u.id + "'" + (isMe ? " disabled title='不能停用自己'" : "") + ">" + (u.is_active ? "停用" : "启用") + "</button> " +
-              "<button class='btn btn-sm' data-reset='" + u.id + "'>重置密码</button>";
+    async function loadStaff(){
+      var box=$("#s-box");
+      box.innerHTML='<div class="empty">\u52a0\u8f7d\u4e2d...</div>';
+      try{
+        var d=await api("/admin/staff");
+        if(!d.items.length){box.innerHTML='<div class="empty">\u6682\u65e0\u5458\u5de5\u8d26\u53f7</div>';return;}
+        var me=staff.id;
+        var rows=d.items.map(function(u){
+          var isMe=u.id===me,acts="";
+          if(canManage){
+            acts="<button class='btn btn-sm' data-role='"+u.id+"'"+(isMe?' disabled title='\u4e0d\u80fd\u4fee\u6539\u81ea\u5df1\u89d2\u8272'':"")+">\u6539\u89d2\u8272</button> "+
+              "<button class='btn btn-sm' data-status='"+u.id+"'"+(isMe?' disabled title='\u4e0d\u80fd\u505c\u7528\u81ea\u5df1'':"")+">"+(u.is_active?"\u505c\u7528":"\u542f\u7528")+"</button> "+
+              "<button class='btn btn-sm' data-reset='"+u.id+"'>\u91cd\u7f6e\u5bc6\u7801</button>";
           }
-          return "<tr data-id='" + u.id + "'>" +
-            "<td>" + u.id + "</td>" +
-            "<td>" + esc(u.username) + "</td>" +
-            "<td>" + esc(u.real_name) + "</td>" +
-            "<td>" + badge(u.role_label) + "</td>" +
-            "<td>" + (u.is_active ? badge("启用", "b-active") : badge("停用", "b-inactive")) + "</td>" +
-            "<td class='muted'>" + fmtTime(u.created_at) + "</td>" +
-            "<td class='muted'>" + fmtTime(u.last_login_at) + "</td>" +
-            "<td class='nowrap'>" + (acts || "<span class='muted'>—</span>") + "</td>" +
-            "</tr>";
+          return "<tr data-id='"+u.id+"'>"+
+            "<td>"+u.id+"</td><td>"+esc(u.username)+"</td><td>"+esc(u.real_name)+"</td>"+
+            "<td>"+badge(u.role_label)+"</td>"+
+            "<td>"+(u.is_active?badge("\u542f\u7528","b-active"):badge("\u505c\u7528","b-inactive"))+"</td>"+
+            "<td class='muted'>"+fmtTime(u.created_at)+"</td><td class='muted'>"+fmtTime(u.last_login_at)+"</td>"+
+            "<td class='nowrap'>"+(acts||"<span class='muted'>\u2014</span>")+"</td></tr>";
         }).join("");
-        box.innerHTML = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>账号</th><th>姓名</th><th>角色</th><th>状态</th><th>创建</th><th>最近登录</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
-        if (canManage) {
-          box.querySelectorAll("[data-role]").forEach((b) => { b.onclick = () => openEditRole(b.dataset.role); });
-          box.querySelectorAll("[data-status]").forEach((b) => { b.onclick = () => { const deact = b.textContent.trim() === "停用"; if (confirm("确认" + (deact ? "停用" : "启用") + "该员工账号？")) toggleStatus(b.dataset.status, deact); }; });
-          box.querySelectorAll("[data-reset]").forEach((b) => { b.onclick = () => openResetPwd(b.dataset.reset); });
+        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u8d26\u53f7</th><th>\u59d3\u540d</th><th>\u89d2\u8272</th><th>\u72b6\u6001</th><th>\u521b\u5efa</th><th>\u6700\u8fd1\u767b\u5f55</th><th>\u64cd\u4f5c</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+        if(canManage){
+          box.querySelectorAll("[data-role]").forEach(function(b){b.onclick=function(){openEditRole(b.dataset.role);};});
+          box.querySelectorAll("[data-status]").forEach(function(b){b.onclick=function(){var deact=b.textContent.trim()==="\u505c\u7528";if(confirm("\u786e\u8ba4"+(deact?"\u505c\u7528":"\u542f\u7528")+"\u8be5\u5458\u5de5\u8d26\u53f7\uff1f"))toggleStatus(b.dataset.id,deact);};});
+          box.querySelectorAll("[data-reset]").forEach(function(b){b.onclick=function(){openResetPwd(b.dataset.reset);};});
         }
-      } catch (e) {
-        box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
-      }
+      }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
     }
 
-    function openNewStaff() {
-      const roleOpts = ROLE_KEYS.map((k) => "<option value='" + k + "'>" + ROLE_LABELS[k] + "</option>").join("");
+    function openNewStaff(){
+      var roleOpts=ROLE_KEYS.map(function(k){return "<option value='"+k+"'>"+ROLE_LABELS[k]+"</option>";}).join("");
       openModal(
-        "<h3>新建员工账号</h3>" +
-        field("登录用户名（≥3位）", "<input id='n-user' placeholder='如：li_ming'>") +
-        field("初始密码（≥8位）", "<input id='n-pwd' type='password' placeholder='至少8位'>") +
-        field("真实姓名", "<input id='n-name' placeholder='如：李明'>") +
-        field("角色", "<select id='n-role'>" + roleOpts + "</select>") +
-        "<div class='modal-actions'><button class='btn' id='n-cancel'>取消</button><button class='btn-primary btn' id='n-ok'>创建</button></div>"
+        "<h3>\u65b0\u5efa\u5458\u5de5\u8d26\u53f7</h3>"+
+        field("\u767b\u5f55\u7528\u6237\u540d(\u22653)",'<input id="n-user" placeholder="\u5982\uff1ali_ming">')+
+        field("\u521d\u59cb\u5bc6\u7801(\u22658\u4f4d)",'<input id="n-pwd" type="password" placeholder="\u81f3\u5c118\u4f4d">')+
+        field("\u771f\u5b9e\u59d3\u540d",'<input id="n-name" placeholder="\u5982\uff1a\u676e\u660e">')+
+        field("\u89d2\u8272",'<select id="n-role">'+roleOpts+"</select>")+
+        "<div class='modal-actions'><button class='btn' id='n-cancel'>\u53d6\u6d88</button><button class='btn-primary btn' id='n-ok'>\u521b\u5efa</button></div>"
       );
-      $("#n-cancel").onclick = closeModal;
-      $("#n-ok").onclick = async () => {
-        const body = { username: $("#n-user").value.trim(), password: $("#n-pwd").value, real_name: $("#n-name").value.trim(), role: $("#n-role").value };
-        try { await api("/admin/staff", { method: "POST", body }); toast("员工已创建", "ok"); closeModal(); loadStaff(); }
-        catch (e) { toast(e.message, "err"); }
+      $("#n-cancel").onclick=closeModal;
+      $("#n-ok").onclick=async function(){
+        var body={username:$("#n-user").value.trim(),password:$("#n-pwd").value,real_name:$("#n-name").value.trim(),role:$("#n-role").value};
+        try{await api("/admin/staff",{method:"POST",body});toast("\u5458\u5de5\u5df2\u521b\u5efa","ok");closeModal();loadStaff();}
+        catch(e){toast(e.message,"err");}
       };
     }
 
-    function openEditRole(id) {
-      const roleOpts = ROLE_KEYS.map((k) => "<option value='" + k + "'>" + ROLE_LABELS[k] + "</option>").join("");
+    function openEditRole(id){
+      var roleOpts=ROLE_KEYS.map(function(k){return "<option value='"+k+"'>"+ROLE_LABELS[k]+"</option>";}).join("");
       openModal(
-        "<h3>修改员工角色 #" + id + "</h3>" +
-        field("新角色", "<select id='r-role'>" + roleOpts + "</select>") +
-        "<div class='modal-actions'><button class='btn' id='r-cancel'>取消</button><button class='btn-primary btn' id='r-ok'>保存</button></div>"
+        "<h3>\u4fee\u6539\u5458\u5de5\u89d2\u8272 #"+id+"</h3>"+
+        field("\u65b0\u89d2\u8272",'<select id="r-role">'+roleOpts+"</select>")+
+        "<div class='modal-actions'><button class='btn' id='r-cancel'>\u53d6\u6d88</button><button class='btn-primary btn' id='r-ok'>\u4fdd\u5b58</button></div>"
       );
-      $("#r-cancel").onclick = closeModal;
-      $("#r-ok").onclick = async () => {
-        try { await api("/admin/staff/" + id, { method: "PUT", body: { role: $("#r-role").value } }); toast("角色已更新", "ok"); closeModal(); loadStaff(); }
-        catch (e) { toast(e.message, "err"); }
+      $("#r-cancel").onclick=closeModal;
+      $("#r-ok").onclick=async function(){
+        try{await api("/admin/staff/"+id,{method:"PUT",body:{role:$("#r-role").value}});toast("\u89d2\u8272\u5df2\u66f4\u65b0","ok");closeModal();loadStaff();}
+        catch(e){toast(e.message,"err");}
       };
     }
 
-    function toggleStatus(id, deactivate) {
-      api("/admin/staff/" + id, { method: "PUT", body: { is_active: !deactivate } })
-        .then(() => { toast("已" + (deactivate ? "停用" : "启用"), "ok"); loadStaff(); })
-        .catch((e) => { toast(e.message, "err"); loadStaff(); });
+    function toggleStatus(id,deactivate){
+      api("/admin/staff/"+id,{method:"PUT",body:{is_active:!deactivate}})
+        .then(function(){toast("\u5df2"+(deactivate?"\u505c\u7528":"\u542f\u7528"),"ok");loadStaff();})
+        .catch(function(e){toast(e.message,"err");loadStaff();});
     }
 
-    function openResetPwd(id) {
+    function openResetPwd(id){
       openModal(
-        "<h3>重置密码 #" + id + "</h3>" +
-        field("新密码（≥8位）", "<input id='rp-pwd' type='password' placeholder='至少8位'>") +
-        "<div class='modal-actions'><button class='btn' id='rp-cancel'>取消</button><button class='btn-primary btn' id='rp-ok'>重置</button></div>"
+        "<h3>\u91cd\u7f6e\u5bc6\u7801 #"+id+"</h3>"+
+        field("\u65b0\u5bc6\u7801(\u22658\u4f4d)",'<input id="rp-pwd" type="password" placeholder="\u81f3\u5c118\u4f4d">')+
+        "<div class='modal-actions'><button class='btn' id='rp-cancel'>\u53d6\u6d88</button><button class='btn-primary btn' id='rp-ok'>\u91cd\u7f6e</button></div>"
       );
-      $("#rp-cancel").onclick = closeModal;
-      $("#rp-ok").onclick = async () => {
-        try { await api("/admin/staff/" + id + "/reset-password", { method: "POST", body: { new_password: $("#rp-pwd").value } }); toast("密码已重置", "ok"); closeModal(); loadStaff(); }
-        catch (e) { toast(e.message, "err"); }
+      $("#rp-cancel").onclick=closeModal;
+      $("#rp-ok").onclick=async function(){
+        try{await api("/admin/staff/"+id+"/reset-password",{method:"POST",body:{new_password:$("#rp-pwd").value}});toast("\u5bc6\u7801\u5df2\u91cd\u7f6e","ok");closeModal();loadStaff();}
+        catch(e){toast(e.message,"err");}
       };
     }
   }
 
-  function openChangePwd() {
+  function openChangePwd(){
     openModal(
-      "<h3>修改我的密码</h3>" +
-      field("原密码", "<input id='cp-old' type='password'>") +
-      field("新密码（≥8位）", "<input id='cp-new' type='password'>") +
-      "<div class='modal-actions'><button class='btn' id='cp-cancel'>取消</button><button class='btn-primary btn' id='cp-ok'>保存</button></div>"
+      "<h3>\u4fee\u6539\u6211\u7684\u5bc6\u7801</h3>"+
+      field("\u539f\u5bc6\u7801",'<input id="cp-old" type="password">')+
+      field("\u65b0\u5bc6\u7801(\u22658\u4f4d)",'<input id="cp-new" type="password">')+
+      "<div class='modal-actions'><button class='btn' id='cp-cancel'>\u53d6\u6d88</button><button class='btn-primary btn' id='cp-ok'>\u4fdd\u5b58</button></div>"
     );
-    $("#cp-cancel").onclick = closeModal;
-    $("#cp-ok").onclick = async () => {
-      try {
-        await api("/admin/auth/change-password", { method: "POST", body: { old_password: $("#cp-old").value, new_password: $("#cp-new").value } });
-        toast("密码已修改，请重新登录", "ok"); closeModal(); logout("密码已修改，请重新登录");
-      } catch (e) { toast(e.message, "err"); }
+    $("#cp-cancel").onclick=closeModal;
+    $("#cp-ok").onclick=async function(){
+      try{await api("/admin/auth/change-password",{method:"POST",body:{old_password:$("#cp-old").value,new_password:$("#cp-new").value}});toast("\u5bc6\u7801\u5df2\u4fee\u6539\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55","ok");closeModal();doDOMLogout();}
+      catch(e){toast(e.message,"err");}
     };
   }
 
-  // ---------- 双盲撮合配置台 ----------
-  async function renderPricing(root) {
-    const canConfig = hasPerm("pricing:config");
-    root.innerHTML =
-      '<div class="card"><div class="card-title">双盲撮合 · 推荐逻辑配置' +
-        (canConfig ? '<button class="btn-sm btn btn-primary" id="p-cfg-edit">编辑权重/阈值</button>' : '<span class="sub">只读（需 pricing:config 权限）</span>') +
-      '</div><div id="p-cfg-box"><div class="empty">加载中…</div></div></div>' +
-      '<div class="toolbar">' +
-        '<select id="p-side"><option value="">全部方向</option><option value="brand">品牌方</option><option value="artist">艺人方</option></select>' +
-        '<select id="p-status"><option value="">全部状态</option><option value="open">开放</option><option value="matched">已匹配</option><option value="closed">已关闭</option></select>' +
-        '<button class="btn-primary btn" id="p-search">查询</button>' +
-      '</div>' +
-      '<div id="p-box"><div class="empty">加载中…</div></div>';
-    if (canConfig) $("#p-cfg-edit").onclick = openConfigEditor;
-    $("#p-search").onclick = () => { pricingState.side = $("#p-side").value; pricingState.status = $("#p-status").value; pricingState.page = 1; loadRequests(); };
-    loadConfig();
-    loadRequests();
+  // ============ Pricing ============
+  async function renderPricing(root){
+    var canConfig=hasPerm("pricing:config");
+    root.innerHTML=
+      '<div class="card"><div class="card-title">\u53cc\u76f2\u64cb\u5408 \u00b7 \u63a8\u8350\u903b\u8f91\u914d\u7f6e'+
+        (canConfig?'<button class="btn-sm btn btn-primary" id="p-cfg-edit">\u7f16\u8f91\u6743\u91cd/\u9608\u503c</button>':'<span class="sub">\u53ea\u8bfb(\u9700 pricing:config \u6743\u9650)</span>')+
+      '</div><div id="p-cfg-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div></div>'+
+      '<div class="toolbar">'+
+        '<select id="p-side"><option value="">\u5168\u90e8\u65b9\u5411</option><option value="brand">\u54c1\u724c\u65b9</option><option value="artist">\u827a\u4eba\u65b9</option></select>'+
+        '<select id="p-status"><option value="">\u5168\u90e8\u72b6\u6001</option><option value="open">\u5f00\u653e</option><option value="matched">\u5df2\u5339\u914d</option><option value="closed">\u5df2\u5173\u95ed</option></select>'+
+        '<button class="btn-primary btn" id="p-search">\u67e5\u8be2</button>'+
+      '</div><div id="p-box"><div class="empty">\u52a0\u8f7d\u4e2d...</div></div>';
+    if(canConfig)$("#p-cfg-edit").onclick=openConfigEditor;
+    $("#p-search").onclick=function(){pricingState.side=$("#p-side").value;pricingState.status=$("#p-status").value;pricingState.page=1;loadRequests();};
+    loadConfig();loadRequests();
 
-    async function loadConfig() {
-      try { const c = await api("/admin/pricing/config"); $("#p-cfg-box").innerHTML = renderConfigSummary(c); }
-      catch (e) { $("#p-cfg-box").innerHTML = '<div class="empty">配置加载失败：' + esc(e.message) + '</div>'; }
+    async function loadConfig(){
+      try{var c=await api("/admin/pricing/config");$("#p-cfg-box").innerHTML=renderConfigSummary(c);}
+      catch(e){$("#p-cfg-box").innerHTML='<div class="empty">\u914d\u7f6e\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
     }
-    async function loadRequests() {
-      const box = $("#p-box");
-      box.innerHTML = '<div class="empty">加载中…</div>';
-      try {
-        let qs = "?page=" + pricingState.page + "&page_size=20";
-        if (pricingState.side) qs += "&side=" + pricingState.side;
-        if (pricingState.status) qs += "&status=" + pricingState.status;
-        const d = await api("/admin/pricing/requests" + qs);
-        if (!d.items.length) { box.innerHTML = '<div class="empty">暂无撮合请求</div>'; return; }
-        let rows = d.items.map((r) =>
-          "<tr data-id='" + r.id + "' style='cursor:pointer'>" +
-          "<td>" + r.id + "</td>" +
-          "<td>" + badge(sideLabel(r.side)) + "</td>" +
-          "<td>" + esc(r.category || "—") + "</td>" +
-          "<td>" + esc(r.scenario || "—") + "</td>" +
-          "<td>" + badge(statusLabel(r.status), "b-" + r.status) + "</td>" +
-          "<td>" + esc(r.artist_name_hint || "—") + "</td>" +
-          "<td>" + (r.budget_range ? ("预算 " + esc(r.budget_range)) : (r.quote_range ? ("报价 " + esc(r.quote_range)) : "—")) + "</td>" +
-          "<td class='muted'>" + fmtTime(r.created_at) + "</td>" +
-          "</tr>"
-        ).join("");
-        box.innerHTML = '<div class="table-wrap"><table><thead><tr><th>ID</th><th>方向</th><th>品类</th><th>场景</th><th>状态</th><th>匿名艺人</th><th>金额区间</th><th>提交时间</th></tr></thead><tbody>' + rows + '</tbody></table></div>' + pager(d.total, d.page, d.page_size);
-        box.querySelectorAll("tbody tr").forEach((tr) => { tr.onclick = () => openRequestDetail(tr.dataset.id); });
-        bindPager(d, loadRequests);
-      } catch (e) { box.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>'; }
+    async function loadRequests(){
+      var box=$("#p-box");
+      box.innerHTML='<div class="empty">\u52a0\u8f7d\u4e2d...</div>';
+      try{
+        var qs="?page="+pricingState.page+"&page_size=20";
+        if(pricingState.side)qs+="&side="+pricingState.side;
+        if(pricingState.status)qs+="&status="+pricingState.status;
+        var d=await api("/admin/pricing/requests"+qs);
+        if(!d.items.length){box.innerHTML='<div class="empty">\u6682\u65e0\u64cb\u5408\u8bf7\u6c42</div>';return;}
+        var rows=d.items.map(function(r){
+          return "<tr data-id='"+r.id+"' style='cursor:pointer'>"+
+          "<td>"+r.id+"</td><td>"+badge(sideLabel(r.side))+"</td><td>"+esc(r.category||"\u2014")+"</td>"+
+          "<td>"+esc(r.scenario||"\u2014")+"</td><td>"+badge(statusLabel(r.status),"b-"+r.status)+"</td>"+
+          "<td>"+esc(r.artist_name_hint||"\u2014")+"</td>"+
+          "<td>"+(r.budget_range?("\u9884\u7b97 "+esc(r.budget_range)):(r.quote_range?("\u62a5\u4ef7 "+esc(r.quote_range)):"\u2014"))+"</td>"+
+          "<td class='muted'>"+fmtTime(r.created_at)+"</td></tr>";
+        }).join("");
+        box.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>\u65b9\u5411</th><th>\u54c1\u7类</th><th>\u573a\u666f</th><th>\u72b6\u6001</th><th>\u533f\u540d\u827a\u4eba</th><th>\u91d1\u989d\u533a\u95f4</th><th>\u63d0\u4ea4\u65f6\u95f4</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+pager(d.total,d.page,d.page_size);
+        box.querySelectorAll("tbody tr").forEach(function(tr){tr.onclick=function(){openRequestDetail(tr.dataset.id);};});
+        bindPager(d,loadRequests);
+      }catch(e){box.innerHTML='<div class="empty">\u52a0\u8f7d\u5931\u8d25\uff1a'+esc(e.message)+'</div>';}
     }
   }
 
-  function renderConfigSummary(c) {
-    const w = c.weights || {}, th = c.thresholds || {};
-    const pct = (x) => Math.round((x || 0) * 100) + "%";
-    return '<div class="kv">' +
-      kv("预算契合权重", pct(w.budget_fit)) +
-      kv("品类契合权重", pct(w.category_fit)) +
-      kv("风险契合权重", pct(w.risk_fit)) +
-      kv("商业契合权重", pct(w.commercial_fit)) +
-      kv("最低匹配阈值", (th.min_match_pct != null ? th.min_match_pct : "—") + "%") +
-      kv("最高可接受风险", th.max_risk_level || "不限制") +
-      kv("强制同品类", th.require_category ? "是" : "否") +
-      kv("最近更新", (c.updated_by ? esc(c.updated_by) + " · " : "") + fmtTime(c.updated_at)) +
+  function renderConfigSummary(c){
+    var c=c||{},w=c.weights||{},th=c.thresholds||{};
+    var pct=function(x){return Math.round((x||0)*100)+"%";};
+    return '<div class="kv">'+
+      kv("\u9884\u7b97\u5951\u5408\u6743\u91cd",pct(w.budget_fit))+
+      kv("\u54c1\u7c7b\u5957\u5408\u6743\u91cd",pct(w.category_fit))+
+      kv("\u98ce\u9669\u5957\u5408\u6743\u91cd",pct(w.risk_fit))+
+      kv("\u5546\u4e1a\u5957\u5408\u6743\u91cd",pct(w.commercial_fit))+
+      kv("\u6700\u4f4e\u5339\u914d\u9608\u503c",(th.min_match_pct!=null?th.min_match_pct:"\u2014")+"%")+
+      kv("\u6700\u9ad8\u53ef\u63a5\u53d7\u98ce\u9669",th.max_risk_level||"\u4e0d\u9650\u5236")+
+      kv("\u5f3a\u5236\u540c\u54c1\u7c7b",th.require_category?"\u662f":"\u5426")+
+      kv("\u6700\u8fd1\u66f4\u65b0",(c.updated_by?esc(c.updated_name)+" \u00b7 ":"")+fmtTime(c.updated_at))+
       "</div>";
   }
 
-  function openConfigEditor() {
-    api("/admin/pricing/config").then((c) => {
-      const w = c.weights || {}, th = c.thresholds || {};
-      const riskOpts = ["", "低风险", "中风险", "高风险"].map((r) =>
-        "<option value='" + r + "'" + ((th.max_risk_level || "") === r ? " selected" : "") + ">" + (r || "不限制") + "</option>").join("");
+  function openConfigEditor(){
+    api("/admin/pricing/config").then(function(c){
+      var c=c||{},w=c.weights||{},th=c.thresholds||{};
+      var riskOpts=["","\u4f4e\u98ce\u9669","\u4e2d\u98ce\u9669","\u9ad8\u98ce\u9669"].map(function(r){
+        return "<option value='"+r+"'"+((th.max_risk_level||"")===r?" selected":"")+">"+(r||"\u4e0d\u9650\u5236")+"</option>";
+      }).join("");
       openModal(
-        "<h3>编辑推荐逻辑配置</h3>" +
-        "<p class='muted' style='margin-top:0'>权重会自动归一化为合计 100%（填入 0~1 或任意正数）。</p>" +
-        field("预算契合权重 (budget_fit)", "<input id='cfg-budget' type='number' step='0.05' min='0' value='" + (w.budget_fit != null ? w.budget_fit : 0) + "'>") +
-        field("品类契合权重 (category_fit)", "<input id='cfg-cat' type='number' step='0.05' min='0' value='" + (w.category_fit != null ? w.category_fit : 0) + "'>") +
-        field("风险契合权重 (risk_fit)", "<input id='cfg-risk' type='number' step='0.05' min='0' value='" + (w.risk_fit != null ? w.risk_fit : 0) + "'>") +
-        field("商业契合权重 (commercial_fit)", "<input id='cfg-com' type='number' step='0.05' min='0' value='" + (w.commercial_fit != null ? w.commercial_fit : 0) + "'>") +
-        "<hr style='border:none;border-top:1px solid var(--line);margin:16px 0'>" +
-        field("最低匹配阈值 (%)", "<input id='cfg-min' type='number' step='1' min='0' max='100' value='" + (th.min_match_pct != null ? th.min_match_pct : 20) + "'>") +
-        field("最高可接受风险档", "<select id='cfg-maxrisk'>" + riskOpts + "</select>") +
-        field("强制同品类", "<label style='display:inline-flex;gap:6px;align-items:center'><input id='cfg-catreq' type='checkbox'" + (th.require_category ? " checked" : "") + "> 仅推荐同品类撮合</label>") +
-        "<div class='modal-actions'><button class='btn' id='cfg-cancel'>取消</button><button class='btn-primary btn' id='cfg-save'>保存</button></div>"
+        "<h3>\u7f16\u8f91\u63a8\u8350\u903b\u8f91\u914d\u7f6e</h3>"+
+        "<p class='muted' style='margin-top:0'>\u6743\u91cd\u4f1a\u81ea\u52a8\u5f52\u4e00\u5316\u4e3a\u5408\u8ba1 100%\uff08\u586b\u5165 0~1 \u6216\u4efb\u610f\u6b63\u6570\uff09\u3002</p>"+
+        field("\u9884\u7b97\u5951\u5408 (budget_fit)","<input id='cfg-budget' type='number' step='0.05' min='0' value='"+(w.budget_fit!=null?w.budget_fit:0)+"'>")+
+        field("\u54c1\u7c7b\u5951\u5408 (category_fit)","<input id='cfg-cat' type='number' step='0.05' min='0' value='"+(w.category_fit!=null?w.category_fit:0)+"'>")+
+        field("\u98ce\u9669\u5951\u5408 (risk_fit)","<input id='cfg-risk' type='number' step='0.05' min='0' value="'+(w.risk_fit!=null?w.risk_fit:0)+"'>")+
+        field("\u5546\u4e1a\u5951\u5408 (commercial_fit)","<input id='cfg-com' type='number' step='0.05' min='0' value '"+(w.commercial_fit!=null?w.commercial_fit:0)+"'>")+
+        "<hr style='border:none;border-top:1px solid #e2e8f0;margin:16px 0'>"+
+        field("\u6700\u4f4e\u5339\u914d\u9608\u503c (%)","<input id='cfg-min' type='number' step='1' min='0' max='100' value='"+(th.min_match_pct!=null?th.min_match_pct:20)+"'>")+
+        field("\u6700\u9ad8\u53ef\u63a5\u53d7\u98ce\u9669\u6863","<select id='cfg-maxrisk'>"+riskOpts+"</select>")+
+        field("\u5f3a\u5236\u540c\u54c1\u7c7b","<label style='display:inline-flex;gap:6px;align-items:center'><input id='cfg-catreq' type='checkbox'"+(th.require_category?" checked":"")+"> \u4ec5\u63a8\u8350\u540c\u54c1\u7c7b\u64cb\u5408</label>")+
+        "<div class='modal-actions'><button class='btn' id='cfg-cancel'>\u53d6\u6d88</button><button class='btn-primary btn' id='cfg-save'>\u4fdd\u5b58</button></div>"
       );
-      $("#cfg-cancel").onclick = closeModal;
-      $("#cfg-save").onclick = async () => {
-        const body = {
-          weights: {
-            budget_fit: parseFloat($("#cfg-budget").value) || 0,
-            category_fit: parseFloat($("#cfg-cat").value) || 0,
-            risk_fit: parseFloat($("#cfg-risk").value) || 0,
-            commercial_fit: parseFloat($("#cfg-com").value) || 0,
-          },
-          thresholds: {
-            min_match_pct: parseInt($("#cfg-min").value) || 0,
-            max_risk_level: $("#cfg-maxrisk").value || null,
-            require_category: $("#cfg-catreq").checked,
-          },
+      $("#cfg-cancel").onclick=closeModal;
+      $("#cfg-save").onclick=async function(){
+        var body={
+          weights:{budget_fit:parseFloat($("#cfg-budget").value)||0,category_fit:parseFloat($("#cfg-cat").value)||0,risk_fit:parseFloat($("#cfg-risk").value)||0,commercial_fit:parseFloat($("#cfg-com").value)||0},
+          thresholds:{min_match_pct:parseInt($("#cfg-min").value)||0,max_risk_level:$("#cfg-maxrisk").value||null,require_category:$("#cfg-catreq").checked}
         };
-        try { await api("/admin/pricing/config", { method: "PUT", body }); toast("配置已保存", "ok"); closeModal(); renderPricing($("#page")); }
-        catch (e) { toast(e.message, "err"); }
+        try{await api("/admin/pricing/config",{method:"PUT",body});toast("\u914d\u7f6e\u5df2\u4fdd\u5b58","ok");closeModal();renderPricing($("#page"));}
+        catch(e){toast(e.message,"err");}
       };
-    }).catch((e) => toast(e.message, "err"));
+    }).catch(function(e){toast(e.message,"err");});
   }
 
-  async function openRequestDetail(id) {
-    const d = await api("/admin/pricing/requests/" + id);
-    let recHtml;
-    if (!d.recommendations.length) {
-      recHtml = '<div class="empty">当前配置下无推荐匹配</div>';
-    } else {
-      let rows = d.recommendations.map((r, i) =>
-        "<tr>" +
-        "<td>" + (i + 1) + "</td>" +
-        "<td>" + badge(sideLabel(r.side)) + "</td>" +
-        "<td>" + esc(r.artist_name) + "</td>" +
-        "<td>" + esc(r.category || "—") + "</td>" +
-        "<td>" + esc(r.scenario || "—") + "</td>" +
-        "<td>" + (r.match_pct != null ? r.match_pct + "%" : "—") + "</td>" +
-        "<td><b>" + (r.recommend_score != null ? r.recommend_score : "—") + "</b></td>" +
-        "<td>" + (r.risk_level ? badge(r.risk_level, "b-" + r.risk_level) : "—") + "</td>" +
-        "<td>" + (r.heat_level ? badge(r.heat_level, "b-" + r.heat_level) : "—") + "</td>" +
-        "</tr>"
-      ).join("");
-      recHtml = '<div class="table-wrap"><table><thead><tr><th>#</th><th>方向</th><th>匿名艺人</th><th>品类</th><th>场景</th><th>区间重叠</th><th>推荐分</th><th>风险档</th><th>热度</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  async function openRequestDetail(id){
+    var d=await api("/admin/pricing/requests/"+id);
+    var recHtml;
+    if(!d.recommendations.length){
+      recHtml='<div class="empty">\u5f53\u524d\u914d\u7f6e\u4e0b\u65e0\u63a8\u8350\u5339\u914d</div>';
+    }else{
+      var rows=d.recommendations.map(function(r,i){
+        return "<tr>"+
+        "<td>"+(i+1)+"</td><td>"+badge(sideLabel(r.side))+"</td><td>"+esc(r.artist_name)+"</td>"+
+        "<td>"+esc(r.category||"\u2014")+"</td><td>"+esc(r.scenario||"\u2014")+"</td>"+
+        "<td>"+(r.match_pct!=null?r.match_pct+"%":"\u2014")+"</td><td><b>"+(r.recommend_score!=null?r.recommend_score:"\u2014")+"</b></td>"+
+        "<td>"+(r.risk_level?badge(r.risk_level,"b-"+r.risk_level):"\u2014")+"</td>"+
+        "<td>"+(r.heat_level?badge(r.heat_level,"b-"+r.heat_level):"\u2014")+"</td></tr>";
+      }).join("");
+      recHtml='<div class="table-wrap"><table><thead><tr><th>#</th><th>\u65b9\u5411</th><th>\u533f\u540d\u827a\u4eba</th><th>\u54c1\u7c7b</th><th>\u573a\u666f</th><th>\u533a\u95f4\u91cd\u53e0</th><th>\u63a8\u8350\u5206</th><th>\u98ce\u9669\u6863</th><th>\u70ed\u5ea6</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
     }
-    const rangeTxt = (d.budget_min_wan != null)
-      ? ("预算 " + Math.round(d.budget_min_wan) + "~" + Math.round(d.budget_max_wan) + "万")
-      : ((d.quote_min_wan != null) ? ("报价 " + Math.round(d.quote_min_wan) + "~" + Math.round(d.quote_max_wan) + "万") : "—");
-    let html = "<h3>撮合请求 #" + d.id + " " + badge(statusLabel(d.status), "b-" + d.status) + "</h3>" +
-      "<div class='kv'>" +
-      kv("方向", sideLabel(d.side)) +
-      kv("品类", esc(d.category || "—")) +
-      kv("场景", esc(d.scenario || "—")) +
-      kv("金额区间", rangeTxt) +
-      kv("匿名艺人提示", esc(d.artist_name_hint || "—")) +
-      kv("备注", esc(d.note || "—")) +
-      kv("关联艺人ID", d.artist_id != null ? ("#" + d.artist_id) : "—") +
-      kv("提交时间", fmtTime(d.created_at)) +
-      "</div>" +
-      "<div class='card-title' style='margin-top:18px'>推荐匹配 · 基于当前配置实时计算，共 " + d.recommend_count + " 条</div>" +
-      recHtml +
-      "<div class='modal-actions'><button class='btn' id='rd-close'>关闭</button></div>";
-    openModal(html);
-    $("#rd-close").onclick = closeModal;
+    var rangeTxt=(d.budget_min_wan!=null)?("\u9884\u7b97 "+Math.round(d.budget_min_wan)+"~"+Math.round(d.budget_max_wan)+"\u4e07"):((d.quote_min_wan!=null)?("\u62a5\u4ef7 "+Math.round(d.quote_min_wan)+"~"+Math.round(d.quote_max_wan)+"\u4e07"):"\u2014");
+    var html="<h3>\u64cb\u5408\u8bf7\u6c42 #"+d.id+" "+badge(statusLabel(d.status),"b-"+d.status)+"</h3>"+
+      "<div class='kv'>"+kv("\u65b9\u5411",sideLabel(d.side))+kv("\u54c1\u7c7b",esc(d.category||"\u2014"))+kv("\u573a\u666f",esc(d.scenario||"\u2014"))+
+      kv("\u91d1\u989d\u533a\u95f4",rangeTxt)+kv("\u533f\u540d\u827a\u4eba\u63d0\u793a",esc(d.artist_name_hint||"\u2014"))+
+      kv("\u5907\u6ce8",esc(d.note||"\u2014"))+kv("\u5173\u8054\u827a\u4ebaID",d.artist_id!=null?"#"+d.artist_id:"\u2014")+
+      kv("\u63d0\u4ea4",fmtTime(d.created_at))+"</div>"+
+      "<div class='card-title' style='margin-top:18px'>\u63a8\u8350\u5339\u914d \u00b7 \u57fa\u4e8e\u5f53\u524d\u914d\u7f6e\u5b9e\u65f6\u8ba1\u7b97\uff0c\u5171 "+d.recommend_count+" \u6761</div>"+
+      recHtml+"<div class='modal-actions'><button class='btn' id='rd-close'>\u5173\u95ed</button></div>";
+    openModal(html);$("#rd-close").onclick=closeModal;
   }
 
-  // ---------- 通用 ----------
-  function kv(k, v) { return "<div class='k'>" + k + "</div><div class='v'>" + v + "</div>"; }
-  function pager(total, page, size) {
-    const pages = Math.ceil(total / size) || 1;
-    return '<div class="pager"><span>共 ' + total + " 条</span><span>第 " + page + "/" + pages + " 页</span>" +
-      "<button class='btn btn-sm' data-pg='prev'" + (page <= 1 ? " disabled" : "") + ">上一页</button>" +
-      "<button class='btn btn-sm' data-pg='next'" + (page >= pages ? " disabled" : "") + ">下一页</button></div>";
-  }
-  function bindPager(d, reload) {
-    const box = $("#page");
-    box.querySelectorAll("[data-pg]").forEach((b) => {
-      b.onclick = () => {
-        if (b.disabled) return;
-        if (b.dataset.pg === "prev") pageStateDec(d);
-        else pageStateInc(d);
-        reload();
-      };
-    });
-  }
-  // 通过当前路由状态维护翻页
-  function pageStateDec(d) { setPage(Math.max(1, d.page - 1)); }
-  function pageStateInc(d) { setPage(d.page + 1); }
-  function setPage(p) {
-    // 写入对应 state
-    const key = location.hash.replace("#/", "");
-    if (key === "users") usersState.page = p;
-    else if (key === "leads") leadsState.page = p;
-    else     if (key === "intake") intakeState.page = p;
-    else if (key === "pricing") pricingState.page = p;
-  }
+  // ═══════════════════════════════════════════
+  // 启动入口
+  // ═══════════════════════════════════════════
+  window.addEventListener("resize", resize);
+  resize();
 
-  // ---------- 启动 ----------
-  window.addEventListener("hashchange", () => { if (staff) navigate(location.hash.replace("#/", "")); });
-  $("#logout-btn").addEventListener("click", () => logout());
-  $("#modal-layer").addEventListener("click", (e) => { if (e.target.id === "modal-layer") closeModal(); });
-
-  // V8 幽灵登录初始化（零可编辑元素，无 iframe，无 postMessage）
-  initGhostLogin();
-
+  // 如果已有有效凭证，直接进入 DOM 应用
   if (token && staff) {
-    enterApp();
-  } else {
-    $("#app-view").hidden = true;
-    $("#login-view").hidden = false;
+    enterAppDOM();
   }
 })();
