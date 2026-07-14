@@ -34,6 +34,14 @@ input, select, textarea { font-family: inherit; }
   -webkit-box-shadow: 0 0 0 30px #fff inset !important;
   -webkit-text-fill-color: var(--text) !important;
 }
+/* 假密码输入框——初始为 div，点击后才替换为真实 <input type=password> */
+.pw-fake-input {
+  width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: 14px; color: var(--text-soft); background: #fff; cursor: text;
+  outline: none;
+}
+.pw-fake-input:hover { border-color: #cbd5e1; }
+.pw-fake-input:active { border-color: var(--accent); }
 .login-card button { width: 100%; margin-top: 22px; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 4px; }
 .login-card button:hover { background: #3b78ec; }
 .login-card button:disabled { opacity: .6; cursor: default; }
