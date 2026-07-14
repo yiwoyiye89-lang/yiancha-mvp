@@ -1,18 +1,35 @@
 <!DOCTYPE html>
-<html lang="zh-CN" autocomplete="off">
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>YC Console</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    html,body{width:100%;height:100%;overflow:hidden;background:#0f172a}
-    body{display:flex;align-items:center;justify-content:center}
-    #lc{display:block}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YC Console</title>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<canvas id="lc" width="360" height="420"></canvas>
+<canvas id="bg"></canvas>
+<div id="login-view">
+  <div class="card">
+    <div class="logo">YC</div>
+    <div class="sub">控制台</div>
+    <div class="field">
+      <label>用户名</label>
+      <div id="u" class="inp" contenteditable="true" data-ph="请输入用户名" autocomplete="off"></div>
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <div id="p" class="inp pwd" contenteditable="true" data-ph="请输入密码" autocomplete="off"></div>
+    </div>
+    <button id="lb" type="button">登 录</button>
+    <div id="le" class="err"></div>
+  </div>
+</div>
+<div id="app-view" hidden>
+  <nav id="sidebar"><h3>YC Console</h3><ul id="nav-list"></ul><button id="logout-btn">退出</button></nav>
+  <main id="main"><header id="top-bar"></header><section id="content"></section></main>
+  <div id="modal-layer" hidden><div id="modal-box"><h3 id="modal-title"></h3><div id="modal-body"></div><div id="modal-foot"><button id="modal-close">关闭</button></div></div></div>
+  <div id="toast" hidden></div>
+</div>
 <script src="app.js"></script>
 </body>
 </html>
