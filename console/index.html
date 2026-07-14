@@ -12,11 +12,11 @@
     <div class="login-card">
       <div class="login-logo">艺安查</div>
       <div class="login-sub">运营 / 商务 / 风控 管理后台</div>
-      <form id="login-form">
+      <form id="login-form" autocomplete="off">
         <label>员工账号</label>
-        <input id="username" type="text" autocomplete="username" placeholder="admin" required />
+        <input id="username" type="text" autocomplete="off" placeholder="admin" required />
         <label>登录密码</label>
-        <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+        <input id="password" type="password" autocomplete="new-password" placeholder="••••••••" required />
         <button type="submit" id="login-btn">登 录</button>
         <div id="login-error" class="login-error"></div>
       </form>
