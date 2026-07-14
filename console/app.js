@@ -356,16 +356,26 @@
   };
 
   /* ---- Init ---- */
+  /* Ensure modal starts hidden */
+  $("modal-layer").hidden = true;
   $("logout-btn").addEventListener("click", function(){ logout(); });
   window.addEventListener("hashchange", function () {
     if (staff) { navigate(location.hash.replace("#/", "")); }
   });
 
+  /* Auto-verify token validity; fall back to login on failure */
   if (token && staff) {
-    enterApp();
+    /* Verify token is still valid before entering app */
+    api("GET","/admin/auth/me").then(function(){
+      enterApp();
+    }).catch(function(){
+      /* Token expired/invalid → clear and show login */
+      logout("\u767b\u5f55\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55");
+    });
   } else {
     $("app-view").hidden = true;
     $("login-view").style.display = "";
+    drawBg();
   }
 
 })();
