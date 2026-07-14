@@ -90,16 +90,17 @@
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
-  // ---------- 登录 / 登出 ----------
-  async function doLogin(e) {
-    e.preventDefault();
+  // ---------- 登录 / 登出（contenteditable div，零 input 零 form） ----------
+  async function doLogin() {
     const btn = $("#login-btn");
     if (btn.disabled) return;
     btn.disabled = true; btn.textContent = "登录中…";
     $("#login-error").textContent = "";
     try {
-      const user = ($("#username").value || "").trim();
-      const pass = $("#password").value || "";
+      const userEl = document.getElementById("ci-user");
+      const passEl = document.getElementById("ci-pass");
+      const user = (userEl ? (userEl.textContent || "").trim() : "");
+      const pass = (passEl ? (passEl.textContent || "") : "");
       if (!user || !pass) { throw new Error("请输入账号和密码"); }
       const res = await fetch(API + "/admin/auth/login", {
         method: "POST",
@@ -794,29 +795,17 @@
 
   // ---------- 启动 ----------
   window.addEventListener("hashchange", () => { if (staff) navigate(location.hash.replace("#/", "")); });
-  $("#login-form").addEventListener("submit", doLogin);
+  $("#login-btn").addEventListener("click", doLogin);
   $("#logout-btn").addEventListener("click", () => logout());
   $("#modal-layer").addEventListener("click", (e) => { if (e.target.id === "modal-layer") closeModal(); });
 
-  // 密码框防浏览器自动填充弹窗（v3 核治方案）
-  // 初始 DOM 中不存在 <input type=password>，用 div 模拟输入框
-  // 用户点击时动态创建真实密码框替换，彻底绕过浏览器检测
-  (function () {
-    var fake = document.getElementById("pw-fake");
-    if (!fake) return;
-    fake.addEventListener("click", function _activate() {
-      var real = document.createElement("input");
-      real.id = "password";
-      real.type = "password";
-      real.autocomplete = "off";
-      real.placeholder = "••••••••";
-      real.required = true;
-      real.style.cssText = "width:100%;padding:11px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;outline:none;border-color:#4f8cff;";
-      fake.parentNode.replaceChild(real, fake);
-      real.focus();
-      fake.removeEventListener("click", _activate);
-    }, { once: true });
-  })();
+  // 回车键触发登录（contenteditable div 内）
+  [document.getElementById("ci-user"), document.getElementById("ci-pass")].forEach(function(el) {
+    if (!el) return;
+    el.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") { e.preventDefault(); doLogin(); }
+    });
+  });
 
   if (token && staff) {
     enterApp();
