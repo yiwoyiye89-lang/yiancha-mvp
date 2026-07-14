@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" autocomplete="off">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,9 +7,17 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- 登录视图：登录表单置于沙箱 iframe（opaque origin），浏览器密码管理器/扩展不运行，从根源杜绝 autofill 白条注入 -->
+
+  <!-- ═══ 登录视图：V8 幽灵登录 —— 页面零可编辑元素，点击后动态创建 ═══ -->
   <div id="login-view" class="login-view">
-    <iframe id="login-frame" class="login-frame" src="login-frame.html" sandbox="allow-scripts allow-forms" title="艺安查后台登录"></iframe>
+    <div class="ghost-card" role="presentation" aria-label="艺安查登录入口">
+      <div class="g-logo">艺安查</div>
+      <div class="g-sub">运营 / 商务 / 风控 管理后台</div>
+      <button id="g-go" class="g-btn" type="button" autocomplete="off">登 录</button>
+      <div class="g-foot">独立子域部署 · 仅限内部员工使用</div>
+      <!-- 动态字段容器（JS 创建，用完即销毁） -->
+      <div id="g-dyn-root"></div>
+    </div>
   </div>
 
   <!-- 主控制台 -->
