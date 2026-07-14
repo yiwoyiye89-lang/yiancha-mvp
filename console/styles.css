@@ -19,87 +19,45 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "P
 button { font-family: inherit; cursor: pointer; }
 input, select, textarea { font-family: inherit; }
 
-/* ===== 登录 ===== */
-.login-view { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0f172a 0%, #1d3a6b 100%); position: relative; z-index: 1; overflow: hidden; }
-/* 登录表单在沙箱 iframe 内渲染：透明、定宽，居中显示 */
-.login-frame { width: 100%; max-width: 360px; height: 540px; border: 0; background: transparent; }
-.login-card { width: 360px; max-width: 92vw; background: #fff; border-radius: 16px; padding: 36px 32px; box-shadow: 0 20px 60px rgba(0,0,0,.3); text-align: center; position: relative; z-index: 10; }
-.login-logo { font-size: 28px; font-weight: 800; color: var(--accent); letter-spacing: 2px; }
-.login-sub { color: var(--text-soft); font-size: 13px; margin: 6px 0 24px; }
-.lb { display: block; text-align: left; font-size: 13px; color: var(--text-soft); margin: 14px 0 6px; }
-/* contenteditable 输入框 */
-.ci-input {
-  width: 100%; padding: 11px 12px;
+/* ===== V8 幽灵登录（零可编辑元素初始态） ===== */
+.login-view { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0f172a 0%, #1d3a6b 100%); position: relative; overflow: hidden; }
+
+.ghost-card {
+  width: 360px; max-width: 92vw; background: #fff; border-radius: 16px;
+  padding: 40px 32px 28px; box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  text-align: center; position: relative; z-index: 10;
+}
+.g-logo { font-size: 28px; font-weight: 800; color: var(--accent); letter-spacing: 2px; }
+.g-sub { color: var(--text-soft); font-size: 13px; margin: 6px 0 30px; }
+.g-btn {
+  width: 100%; margin-top: 4px; padding: 13px; background: var(--accent); color: #fff;
+  border: none; border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 6px;
+  cursor: pointer; transition: background .15s; outline: none;
+}
+.g-btn:hover { background: #3b78ec; }
+.g-btn:disabled { opacity: .5; cursor: default; }
+.g-btn.g-outline { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); margin-top: 10px; letter-spacing: 2px; font-weight: 500; }
+.g-btn.g-outline:hover { background: rgba(79,140,255,.06); }
+.g-foot { color: #94a3b8; font-size: 11px; margin-top: 24px; }
+
+/* 动态创建的字段（仅用户点击「登录」后才存在） */
+#g-dyn-root { text-align: left; margin-top: 18px; }
+.g-step { animation: gFadeIn .2s ease; }
+@keyframes gFadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+.g-lb { display: block; font-size: 13px; color: var(--text-soft); margin: 14px 0 6px; }
+.g-box {
+  width: 100%; min-height: 42px; padding: 11px 12px;
   border: 1px solid var(--line); border-radius: 8px;
-  font-size: 14px; outline: none;
+  font-size: 14px; line-height: 18px;
   background: #fff; color: var(--text);
-  cursor: text; min-height: 16px;
-  transition: border-color .15s;
+  outline: none; cursor: text; word-break: keep-all;
+  transition: border-color .15s, box-shadow .15s;
 }
-.ci-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,140,255,.12); }
-.ci-input:empty::before { content: attr(data-ph); color: #94a3b8; pointer-events: none; }
-/* 密码框掩码 */
-.ci-pass {
-  -webkit-text-security: disc;
-  font-family: monospace;
-  letter-spacing: 2px;
-}
-.login-btn { width: 100%; margin-top: 22px; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 4px; cursor: pointer; }
-.login-btn:hover { background: #3b78ec; }
-.login-btn:disabled { opacity: .6; cursor: default; }
-.login-error { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 18px; }
-.login-foot { color: #94a3b8; font-size: 11px; margin-top: 22px; }
-
-/* ================================================================
-   核弹级：杀掉所有浏览器/扩展注入的 autofill / 密码弹窗 UI
-   这些规则针对已知的各类注入方式
-   ================================================================ */
-
-/* 1. Chrome/Edge 原生 autofill 弹窗（shadow DOM 内的 pseudo 元素） */
-.login-view :-webkit-autofill,
-.login-view :-webkit-autofill-hover,
-.login-view :-webkit-autofill-active {
-  animation: kill-autofill 0s forwards !important;
-  -webkit-box-shadow: 0 0 0 30px #fff inset !important;
-  -webkit-text-fill-color: var(--text) !important;
-}
-
-@keyframes kill-autofill {
-  to { visibility: hidden; opacity: 0; }
-}
-
-/* 2. 隐藏任何绝对定位/fixed定位的可疑白条（浏览器扩展注入） */
-.login-card > *:not(.login-logo):not(.login-sub):not(.lb):not(.ci-input):not(.login-btn):not(.login-error):not(.login-foot),
-.login-view > *:not(.login-card) {
-  /* 只保留我们自己的元素，其他全部隐藏 */
-}
-
-/* 3. 全局：隐藏常见密码管理器扩展的选择器 */
-[data-lastpass-icon-root],
-[id*="lastpass"],
-[id*="bitwarden"],
-[id*="1password"],
-[class*="autofill"],
-[role="listbox"][aria-label*="密码"],
-[role="listbox"][aria-label*="password"],
-[role="listbox"][aria-label*="credential"],
-.combobox-list,
-.suggestions-container,
-.-chrome-autofill,
-.-internal-autofill-selected,
-#PasswordManagerList,
-#credential-picker,
-.credential-popup {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  opacity: 0 !important;
-  height: 0 !important;
-  overflow: hidden !important;
-  position: absolute !important;
-  left: -9999px !important;
-  top: -9999px !important;
-}
+.g-box:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,140,255,.12); }
+.g-box::selection { background: rgba(79,140,255,.2); }
+/* 密码掩码 */
+.g-pwd { font-family: "Courier New",Consolas,monospace; letter-spacing: 2px; }
+.g-err { color: var(--danger); font-size: 13px; margin-top: 10px; min-height: 18px; }
 
 /* ===== 布局 ===== */
 .app-view { display: flex; height: 100vh; }
