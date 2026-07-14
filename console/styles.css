@@ -24,27 +24,27 @@ input, select, textarea { font-family: inherit; }
 .login-card { width: 360px; background: #fff; border-radius: 16px; padding: 36px 32px; box-shadow: 0 20px 60px rgba(0,0,0,.3); text-align: center; position: relative; z-index: 10; }
 .login-logo { font-size: 28px; font-weight: 800; color: var(--accent); letter-spacing: 2px; }
 .login-sub { color: var(--text-soft); font-size: 13px; margin: 6px 0 24px; }
-.login-card label { display: block; text-align: left; font-size: 13px; color: var(--text-soft); margin: 14px 0 6px; }
-.login-card input { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; outline: none; }
-.login-card input:focus { border-color: var(--accent); }
-/* 防浏览器自动填充：密码框初始为 text（JS 在首次 focus 切为 password），不触发原生下拉 */
-.login-card input:-webkit-autofill,
-.login-card input:-webkit-autofill:hover,
-.login-card input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 30px #fff inset !important;
-  -webkit-text-fill-color: var(--text) !important;
+.lb { display: block; text-align: left; font-size: 13px; color: var(--text-soft); margin: 14px 0 6px; }
+/* contenteditable 输入框 — 替代 <input>，杜绝浏览器 autofill */
+.ci-input {
+  width: 100%; padding: 11px 12px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font-size: 14px; outline: none;
+  background: #fff; color: var(--text);
+  cursor: text; min-height: 16px;
+  transition: border-color .15s;
 }
-/* 假密码输入框——初始为 div，点击后才替换为真实 <input type=password> */
-.pw-fake-input {
-  width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px;
-  font-size: 14px; color: var(--text-soft); background: #fff; cursor: text;
-  outline: none;
+.ci-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,140,255,.12); }
+.ci-input:empty::before { content: attr(data-ph); color: #94a3b8; pointer-events: none; }
+/* 密码框：contenteditable + 文本掩码，浏览器无法识别为密码字段 */
+.ci-pass {
+  -webkit-text-security: disc;
+  font-family: monospace;
+  letter-spacing: 2px;
 }
-.pw-fake-input:hover { border-color: #cbd5e1; }
-.pw-fake-input:active { border-color: var(--accent); }
-.login-card button { width: 100%; margin-top: 22px; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 4px; }
-.login-card button:hover { background: #3b78ec; }
-.login-card button:disabled { opacity: .6; cursor: default; }
+.login-btn { width: 100%; margin-top: 22px; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 4px; cursor: pointer; }
+.login-btn:hover { background: #3b78ec; }
+.login-btn:disabled { opacity: .6; cursor: default; }
 .login-error { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 18px; }
 .login-foot { color: #94a3b8; font-size: 11px; margin-top: 22px; }
 
