@@ -27,17 +27,13 @@ input, select, textarea { font-family: inherit; }
 .login-card label { display: block; text-align: left; font-size: 13px; color: var(--text-soft); margin: 14px 0 6px; }
 .login-card input { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; outline: none; }
 .login-card input:focus { border-color: var(--accent); }
-/* 抑制浏览器原生 autofill 弹窗遮挡 */
+/* 防浏览器自动填充：密码框初始为 text（JS 在首次 focus 切为 password），不触发原生下拉 */
 .login-card input:-webkit-autofill,
 .login-card input:-webkit-autofill:hover,
-.login-card input:-webkit-autofill:focus,
-.login-card input:-webkit-autofill:active {
+.login-card input:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0 30px #fff inset !important;
   -webkit-text-fill-color: var(--text) !important;
-  transition: background-color 5000s ease-in-out 0s;
 }
-/* 隐藏密码框的浏览器原生下拉建议（Chrome/Edge） */
-.login-card::-webkit-credentials-auto-fill-button { display: none !important; }
 .login-card button { width: 100%; margin-top: 22px; padding: 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 4px; }
 .login-card button:hover { background: #3b78ec; }
 .login-card button:disabled { opacity: .6; cursor: default; }
