@@ -798,14 +798,23 @@
   $("#logout-btn").addEventListener("click", () => logout());
   $("#modal-layer").addEventListener("click", (e) => { if (e.target.id === "modal-layer") closeModal(); });
 
-  // 密码框防浏览器自动填充弹窗：初始为 text，首次 focus 切为 password
+  // 密码框防浏览器自动填充弹窗（v3 核治方案）
+  // 初始 DOM 中不存在 <input type=password>，用 div 模拟输入框
+  // 用户点击时动态创建真实密码框替换，彻底绕过浏览器检测
   (function () {
-    var pw = $("#password");
-    if (!pw) return;
-    pw.addEventListener("focus", function _switch() {
-      pw.type = "password";
-      pw.placeholder = "••••••••";
-      pw.removeEventListener("focus", _switch);
+    var fake = document.getElementById("pw-fake");
+    if (!fake) return;
+    fake.addEventListener("click", function _activate() {
+      var real = document.createElement("input");
+      real.id = "password";
+      real.type = "password";
+      real.autocomplete = "off";
+      real.placeholder = "••••••••";
+      real.required = true;
+      real.style.cssText = "width:100%;padding:11px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;outline:none;border-color:#4f8cff;";
+      fake.parentNode.replaceChild(real, fake);
+      real.focus();
+      fake.removeEventListener("click", _activate);
     }, { once: true });
   })();
 
