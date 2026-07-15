@@ -2,143 +2,191 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>YC Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>艺安查 · 管理后台</title>
 <link rel="stylesheet" href="styles.css">
-<style>
-/* V13: Error display banner — always present, hidden by default */
-#js-error-bar{
-  display:none;position:fixed;bottom:0;left:0;right:0;
-  background:#dc2626;color:#fff;padding:10px 20px;
-  font-size:12.5px;font-family:monospace;z-index:99999;
-  line-height:1.5;max-height:120px;overflow:auto;
-}
-</style>
 </head>
 <body>
 
-<!-- JS Error Display — shows any uncaught error at bottom of screen -->
-<div id="js-error-bar"></div>
-<script>
-/* Capture ALL JS errors and show them visibly */
-window.onerror = function(msg, src, line, col, err) {
-  var bar = document.getElementById('js-error-bar');
-  if (!bar) return;
-  bar.style.display = 'block';
-  bar.innerHTML = '<b>JS Error:</b> ' + String(msg) +
-    '<br><span style="opacity:.7">' + (src||'') + ':' + (line||'') + ':' + (col||'') +
-    '</span><br><span style="opacity:.5;font-size:11px">' + String(err && err.stack ? err.stack.slice(0,300) : '') + '</span>' +
-    '<div style="margin-top:6px"><button onclick="this.parentNode.style.display=\'none\'" style="background:rgba(255,255,255,.2);color:#fff;border:none;padding:3px 12px;border-radius:4px;cursor:pointer;font-size:11px">关闭</button></div>';
-  return false;
-};
-</script>
-
+<!-- Canvas Background (kills autofill white block) -->
 <canvas id="bg"></canvas>
 
-<!-- ===== LOGIN VIEW ===== -->
+<!-- Login View -->
 <div id="login-view">
-  <div class="login-card">
-    <div class="login-logo">YC</div>
-    <div class="login-sub">艺安查控制台</div>
-    <div class="field">
-      <label>用户名</label>
-      <div id="u" class="inp" contenteditable="true" data-ph="请输入用户名"></div>
+  <div class="login-card" id="login-card">
+    <div class="login-logo"><span class="brand-icon">YC</span> 艺安查</div>
+    <p class="login-subtitle">管理后台</p>
+    <div class="login-form">
+      <div class="input-group"><label>用户名</label><div class="input-mask" id="u" contenteditable="true" autocomplete="username"></div></div>
+      <div class="input-group"><label>密码</label><div class="input-mask" id="p" contenteditable="true" autocomplete="current-password" type="password"></div></div>
+      <div class="login-err" id="le"></div>
+      <button class="btn btn-primary btn-block" id="lb">登 录</button>
     </div>
-    <div class="field">
-      <label>密码</label>
-      <div id="p" class="inp pwd" contenteditable="true" data-ph="请输入密码"></div>
-    </div>
-    <button id="lb" type="button">登 录</button>
-    <div id="le" class="err"></div>
   </div>
 </div>
 
-<!-- ===== APP VIEW (post-login) ===== -->
+<!-- App View -->
 <div id="app-view" hidden>
 
   <!-- Sidebar -->
-  <nav id="sidebar">
-    <div class="sidebar-brand">
-      <span class="brand-icon">YC</span>
-      <span class="brand-text">艺安查</span>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand"><span class="brand-icon">YC</span> <span class="brand-text">艺安查</span></div>
+    <nav class="sidebar-nav" id="sidebar-nav">
+      <a class="nav-item active" data-page="dashboard"><span class="nav-icon">&#x1F4CA;</span> 数据看板</a>
+      <a class="nav-item" data-page="artists"><span class="nav-icon">&#x1F3A4;</span> 艺人管理</a>
+      <a class="nav-item" data-page="events"><span class="nav-icon">&#x26A0;</span> 风险事件</a>
+      <a class="nav-item" data-page="users"><span class="nav-icon">&#x1F465;</span> 用户管理</a>
+      <a class="nav-item" data-page="staff"><span class="nav-icon">&#x1F464;</span> 员工管理</a>
+      <a class="nav-item" data-page="leads"><span class="nav-icon">&#x1F4E8;</span> 商务线索</a>
+      <a class="nav-item" data-page="intakes"><span class="nav-icon">&#x270D;&#xFE0F;</span> 入驻审核</a>
+      <a class="nav-item" data-page="invites"><span class="nav-icon">&#x1F4CB;</span> 邀请码</a>
+      <a class="nav-item" data-page="pricing"><span class="nav-icon">&#x1F4B0;</span> 撮合配置</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost btn-sm" id="logout-btn">退出登录</button>
     </div>
-    <ul id="nav-list"></ul>
-    <button id="logout-btn">退出登录</button>
-  </nav>
+  </aside>
 
-  <!-- Main -->
-  <main id="main">
-    <header id="top-bar">
-      <div class="top-left">
-        <button id="menu-toggle" class="menu-btn">&#9776;</button>
-        <span id="page-title">仪表盘</span>
-      </div>
-      <div class="top-right">
-        <span id="user-info"></span>
+  <!-- Main Area -->
+  <main class="main-area">
+
+    <!-- Top Bar -->
+    <header class="topbar">
+      <button class="hamburger" id="hamburger">&#9776;</button>
+      <h2 class="topbar-title" id="topbar-title">数据看板</h2>
+      <div class="topbar-right">
+        <span class="staff-name" id="staff-name">--</span>
+        <span class="staff-role" id="staff-role">--</span>
       </div>
     </header>
 
-    <!-- ===== V13: #content 有静态默认内容，不再依赖 JS 渲染 ===== -->
+    <!-- Content Area -->
     <section id="content">
 
-      <!-- 静态默认面板（JS 加载成功后会覆盖此内容） -->
-      <div class="welcome-banner" id="default-welcome">
-        <div class="welcome-text">
-          <h2 id="welcome-h2">欢迎回来，管理员</h2>
-          <p class="welcome-desc">艺安查控制台 · SaaS 艺人风险评估平台</p>
+      <!-- ===== DASHBOARD (default page) ===== -->
+      <div id="page-dashboard" class="page">
+        <div class="welcome-banner" id="welcome-banner">
+          <div class="welcome-text"><h1>控制台</h1><p>欢迎回来，<strong id="welcome-name">管理员</strong></p></div>
+          <div class="welcome-time" id="welcome-time"></div>
         </div>
-        <div class="welcome-actions">
-          <button class="btn btn-primary" onclick="if(window.navigate)navigate('artists')">艺人管理</button>
-          <button class="btn btn-primary" onclick="if(window.navigate)navigate('events')">风险事件</button>
-          <button class="btn btn-primary" onclick="if(window.navigate)navigate('reports')">报告导出</button>
+
+        <div class="stat-cards" id="dash-cards">
+          <div class="stat-card"><span class="stat-icon icon-blue">&#x1F465;</span><div class="stat-value" id="st-users">--</div><div class="stat-label">注册用户</div><div class="stat-note" id="nt-users">...</div></div>
+          <div class="stat-card"><span class="stat-icon icon-green">&#x1F4E8;</span><div class="stat-value" id="st-leads">--</div><div class="stat-label">商务线索</div><div class="stat-note" id="nt-leads">...</div></div>
+          <div class="stat-card"><span class="stat-icon icon-yellow">&#x270D;&#xFE0F;</span><div class="stat-value" id="st-intakes">--</div><div class="stat-label">入驻申请</div><div class="stat-note" id="nt-intakes">...</div></div>
+          <div class="stat-card"><span class="stat-icon icon-purple">&#x1F4B0;</span><div class="stat-value" id="st-pricing">--</div><div class="stat-label">撮合请求</div><div class="stat-note" id="nt-pricing">...</div></div>
+        </div>
+
+        <div class="dash-grid" id="dash-grid">
+          <div class="dash-panel"><h3>&#x1F4AF; 今日概览</h3><div id="dash-today" class="info-grid"><p>加载中...</p></div></div>
+          <div class="dash-panel"><h3>&#x1F4CB; 分布情况</h3><div id="dash-dist" class="info-grid"><p>加载中...</p></div></div>
         </div>
       </div>
 
-      <div class="stat-cards" id="default-stats">
-        <div class="stat-card">
-          <span class="stat-icon icon-blue">*</span>
-          <div class="stat-value" id="st-artists">--</div>
-          <div class="stat-label">艺人总数</div>
-          <div class="stat-note" id="nt-artists">正在连接服务器...</div>
+      <!-- ===== ARTISTS ===== -->
+      <div id="page-artists" class="page" hidden>
+        <div class="toolbar">
+          <div class="search-bar"><input type="text" id="artist-search" placeholder="搜索艺人姓名..." /><button class="btn btn-primary btn-sm" id="artist-search-btn">搜索</button></div>
+          <div class="toolbar-right"><select id="artist-level" class="select-sm"><option value="">所有等级</option><option value="S">S级</option><option value="A级">A级</option><option value="B级">B级</option><option value="C级">C级</option></select></div>
         </div>
-        <div class="stat-card">
-          <span class="stat-icon icon-yellow">⚠</span>
-          <div class="stat-value" id="st-events">--</div>
-          <div class="stat-label">风险事件</div>
-          <div class="stat-note" id="nt-events">正在连接服务器...</div>
-        </div>
-        <div class="stat-card">
-          <span class="stat-icon icon-red">☠</span>
-          <div class="stat-value" id="st-highrisk">--</div>
-          <div class="stat-label">高风险艺人</div>
-          <div class="stat-note" id="nt-highrisk">正在连接服务器...</div>
-        </div>
-        <div class="stat-card">
-          <span class="stat-icon icon-green">+</span>
-          <div class="stat-value" id="st-today">--</div>
-          <div class="stat-label">今日新增</div>
-          <div class="stat-note" id="nt-today">正在连接服务器...</div>
-        </div>
+        <div class="table-container"><table class="data-table" id="artist-table"><thead><tr><th>ID</th><th>姓名</th><th>等级</th><th>风险分</th><th>经纪公司</th><th>代表作</th></tr></thead><tbody id="artist-tbody"><tr><td colspan="6" class="loading-row">正在加载艺人数据...</td></tr></tbody></table></div>
+        <div class="pagination" id="artist-pagination"></div>
       </div>
 
-      <div id="dash-recent"></div>
-
-    </section>
-  </main>
-
-  <!-- Modal -->
-  <div id="modal-layer" hidden onclick="if(event.target===this)this.hidden=true" style="display:none!important">
-    <div class="modal-box">
-      <h3 id="modal-title"></h3>
-      <div id="modal-body"></div>
-      <div id="modal-foot">
-        <button type="button" onclick="document.getElementById('modal-layer').hidden=true">关闭</button>
+      <!-- ===== EVENTS ===== -->
+      <div id="page-events" class="page" hidden>
+        <div class="toolbar">
+          <div class="search-bar"><input type="text" id="event-search" placeholder="搜索事件..." /><button class="btn btn-primary btn-sm" id="event-search-btn">搜索</button></div>
+          <div class="toolbar-right"><select id="event-level" class="select-sm"><option value="">所有级别</option><option value="S">S级</option><option value="A级">A级</option><option value="B级">B级</option><option value="C级">C级</option></select></div>
+        </div>
+        <div class="table-container"><table class="data-table" id="event-table"><thead><tr><th>ID</th><th>艺人</th><th>事件类型</th><th>风险等级</th><th>日期</th><th>摘要</th></tr></thead><tbody id="event-tbody"><tr><td colspan="6" class="loading-row">正在加载风险事件...</td></tr></tbody></table></div>
+        <div class="pagination" id="event-pagination"></div>
       </div>
+
+      <!-- ===== USERS ===== -->
+      <div id="page-users" class="page" hidden>
+        <div class="toolbar">
+          <div class="search-bar"><input type="text" id="user-search" placeholder="手机号/昵称/公司..." /><button class="btn btn-primary btn-sm" id="user-search-btn">搜索</button></div>
+          <div class="toolbar-right">
+            <select id="user-type-filter" class="select-sm"><option value="">全部套餐</option><option value="free">免费版</option><option value="personal">个人版</option><option value="professional">专业版</option><option value="enterprise">企业版</option></select>
+            <select id="user-status-filter" class="select-sm"><option value="">全部状态</option><option value="true">启用</option><option value="false">停用</option></select>
+          </div>
+        </div>
+        <div class="table-container"><table class="data-table" id="user-table"><thead><tr><th>ID</th><th>昵称/姓名</th><th>手机号</th><th>公司</th><th>套餐</th><th>认证</th><th>状态</th><th>注册时间</th></tr></thead><tbody id="user-tbody"><tr><td colspan="8" class="loading-row">正在加载用户数据...</td></tr></tbody></table></div>
+        <div class="pagination" id="user-pagination"></div>
+      </div>
+
+      <!-- ===== STAFF ===== -->
+      <div id="page-staff" class="page" hidden>
+        <div class="toolbar">
+          <div class="search-bar"><input type="text" id="staff-search" placeholder="搜索员工..." /><button class="btn btn-primary btn-sm" id="staff-search-btn">搜索</button></div>
+        </div>
+        <div class="table-container"><table class="data-table" id="staff-table"><thead><tr><th>ID</th><th>用户名</th><th>真实姓名</th><th>角色</th><th>状态</th><th>最后登录</th></tr></thead><tbody id="staff-tbody"><tr><td colspan="6" class="loading-row">正在加载员工数据...</td></tr></tbody></table></div>
+      </div>
+
+      <!-- ===== LEADS ===== -->
+      <div id="page-leads" class="page" hidden>
+        <div class="toolbar">
+          <div class="search-bar"><input type="text" id="lead-search" placeholder="搜索线索..." /><button class="btn btn-primary btn-sm" id="lead-search-btn">搜索</button></div>
+          <div class="toolbar-right"><select id="lead-status-filter" class="select-sm"><option value="">全部状态</option><option value="pending">待处理</option><option value="contacted">已联系</option><option value="converted">已转化</option><option value="rejected">已拒绝</option></select></div>
+        </div>
+        <div class="table-container"><table class="data-table" id="lead-table"><thead><tr><th>ID</th><th>公司/联系人</th><th>联系方式</th><th>需求描述</th><th>状态</th><th>负责人</th><th>创建时间</th></tr></thead><tbody id="lead-tbody"><tr><td colspan="7" class="loading-row">正在加载商务线索...</td></tr></tbody></table></div>
+        <div class="pagination" id="lead-pagination"></div>
+      </div>
+
+      <!-- ===== INTAKES ===== -->
+      <div id="page-intakes" class="page" hidden>
+        <div class="toolbar">
+          <div class="search-bar"><input type="text" id="intake-search" placeholder="搜索入驻申请..." /><button class="btn btn-primary btn-sm" id="intake-search-btn">搜索</button></div>
+          <div class="toolbar-right"><select id="intake-status-filter" class="select-sm"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已通过</option><option value="rejected">已驳回</option></select></div>
+        </div>
+        <div class="table-container"><table class="data-table" id="intake-table"><thead><tr><th>ID</th><th>艺人名称</th><th>申请人</th><th>类型</th><th>状态</th><th>提交时间</th></tr></thead><tbody id="intake-tbody"><tr><td colspan="6" class="loading-row">正在加载入驻申请...</td></tr></tbody></table></div>
+        <div class="pagination" id="intake-pagination"></div>
+      </div>
+
+      <!-- ===== INVITES ===== -->
+      <div id="page-invites" class="page" hidden>
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm" id="invite-gen-btn">&#x2795; 生成邀请码</button>
+        </div>
+        <div class="stat-cords-mini" id="invite-stats"><span>总数: --</span><span>有效: --</span></div>
+        <div class="table-container"><table class="data-table" id="invite-table"><thead><tr><th>ID</th><th>邀请码</th><th>使用次数</th><th>上限</th><th>过期时间</th><th>状态</th></tr></thead><tbody id="invite-tbody"><tr><td colspan="6" class="loading-row">正在加载邀请码...</td></tr></tbody></table></div>
+      </div>
+
+      <!-- ===== PRICING ===== -->
+      <div id="page-pricing" class="page" hidden>
+        <div class="pricing-header">
+          <h3>撮合配置</h3><p>双盲定价推荐逻辑配置台</p>
+        </div>
+        <div class="form-card" id="pricing-config-card">
+          <p class="loading">正在加载配置...</p>
+        </div>
+        <h4 style="margin:20px 0 10px">撮合请求列表</h4>
+        <div class="table-container"><table class="data-table" id="pricing-table"><thead><tr><th>ID</th><th>品牌方</th><th>预算范围</th><th>行业</th><th>状态</th><th>创建时间</th></tr></thead><tbody id="pricing-tbody"><tr><td colspan="6" class="loading-row">正在加载撮合请求...</td></tr></tbody></table></div>
+      </div>
+
+    </section><!-- /#content -->
+  </main><!-- /.main-area -->
+</div><!-- /#app-view -->
+
+<!-- Modal (nuclear fix: display:none!important + inline onclick) -->
+<div id="modal-layer" hidden onclick="if(event.target===this)this.hidden=true" style="display:none!important">
+  <div class="modal-box">
+    <h3 id="modal-title"></h3>
+    <div id="modal-body"></div>
+    <div id="modal-foot">
+      <button type="button" onclick="document.getElementById('modal-layer').hidden=true">关闭</button>
     </div>
   </div>
+</div>
 
-  <!-- Toast -->
-  <div id="toast" hidden></div>
+<!-- Toast -->
+<div id="toast" hidden></div>
+
+<!-- JS Error Display Bar (V13 feature) -->
+<div id="js-error-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#e74c3c;color:#fff;padding:10px 16px;font-size:13px;z-index:99999;font-family:monospace;cursor:pointer;" onclick="this.style.display='none'">
+  <strong style="color:#ffeb3b">JS Error:</strong> <span id="js-error-msg"></span>
+  <span style="float:right;opacity:0.7;">&#x2715; 点击关闭</span>
 </div>
 
 <script src="app.js"></script>
