@@ -8,31 +8,69 @@
 </head>
 <body>
 <canvas id="bg"></canvas>
+
+<!-- ===== LOGIN VIEW ===== -->
 <div id="login-view">
-  <div class="card">
-    <div class="logo">YC</div>
-    <div class="sub">控制台</div>
+  <div class="login-card">
+    <div class="login-logo">YC</div>
+    <div class="login-sub">艺安查控制台</div>
     <div class="field">
       <label>用户名</label>
-      <div id="u" class="inp" contenteditable="true" data-ph="请输入用户名" autocomplete="off"></div>
+      <div id="u" class="inp" contenteditable="true" data-ph="请输入用户名"></div>
     </div>
     <div class="field">
       <label>密码</label>
-      <div id="p" class="inp pwd" contenteditable="true" data-ph="请输入密码" autocomplete="off"></div>
+      <div id="p" class="inp pwd" contenteditable="true" data-ph="请输入密码"></div>
     </div>
     <button id="lb" type="button">登 录</button>
     <div id="le" class="err"></div>
   </div>
 </div>
+
+<!-- ===== APP VIEW (post-login) ===== -->
 <div id="app-view" hidden>
-  <nav id="sidebar"><h3>YC Console</h3><ul id="nav-list"></ul><button id="logout-btn">退出</button></nav>
-  <main id="main"><header id="top-bar"></header><section id="content"></section></main>
-  <div id="modal-layer" hidden onclick="if(event.target===this)this.hidden=true" style="display:none!important"><div id="modal-box"><h3 id="modal-title"></h3><div id="modal-body"></div><div id="modal-foot"><button id="modal-close" type="button" onclick="document.getElementById('modal-layer').hidden=true">关闭</button></div></div></div>
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-icon">YC</span>
+      <span class="brand-text">艺安查</span>
+    </div>
+    <ul id="nav-list"></ul>
+    <button id="logout-btn">退出登录</button>
+  </nav>
+
+  <!-- Main -->
+  <main id="main">
+    <header id="top-bar">
+      <div class="top-left">
+        <button id="menu-toggle" class="menu-btn">&#9776;</button>
+        <span id="page-title">仪表盘</span>
+      </div>
+      <div class="top-right">
+        <span id="user-info"></span>
+      </div>
+    </header>
+    <section id="content"></section>
+  </main>
+
+  <!-- Modal (nuclear fix: inline handlers + display:none) -->
+  <div id="modal-layer" hidden onclick="if(event.target===this)this.hidden=true" style="display:none!important">
+    <div class="modal-box">
+      <h3 id="modal-title"></h3>
+      <div id="modal-body"></div>
+      <div id="modal-foot">
+        <button type="button" onclick="document.getElementById('modal-layer').hidden=true">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
   <div id="toast" hidden></div>
 </div>
+
 <script src="app.js"></script>
-<script>/* Nuclear: force modal hidden regardless of JS errors */
-(function(){var m=document.getElementById('modal-layer');if(m){m.hidden=true;m.style.display='none';}})();
+<script>(function(){var m=document.getElementById('modal-layer');if(m){m.hidden=true;m.style.display='none';}})();
 </script>
 </body>
 </html>
