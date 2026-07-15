@@ -5,8 +5,34 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>YC Console</title>
 <link rel="stylesheet" href="styles.css">
+<style>
+/* V13: Error display banner — always present, hidden by default */
+#js-error-bar{
+  display:none;position:fixed;bottom:0;left:0;right:0;
+  background:#dc2626;color:#fff;padding:10px 20px;
+  font-size:12.5px;font-family:monospace;z-index:99999;
+  line-height:1.5;max-height:120px;overflow:auto;
+}
+</style>
 </head>
 <body>
+
+<!-- JS Error Display — shows any uncaught error at bottom of screen -->
+<div id="js-error-bar"></div>
+<script>
+/* Capture ALL JS errors and show them visibly */
+window.onerror = function(msg, src, line, col, err) {
+  var bar = document.getElementById('js-error-bar');
+  if (!bar) return;
+  bar.style.display = 'block';
+  bar.innerHTML = '<b>JS Error:</b> ' + String(msg) +
+    '<br><span style="opacity:.7">' + (src||'') + ':' + (line||'') + ':' + (col||'') +
+    '</span><br><span style="opacity:.5;font-size:11px">' + String(err && err.stack ? err.stack.slice(0,300) : '') + '</span>' +
+    '<div style="margin-top:6px"><button onclick="this.parentNode.style.display=\'none\'" style="background:rgba(255,255,255,.2);color:#fff;border:none;padding:3px 12px;border-radius:4px;cursor:pointer;font-size:11px">关闭</button></div>';
+  return false;
+};
+</script>
+
 <canvas id="bg"></canvas>
 
 <!-- ===== LOGIN VIEW ===== -->
@@ -51,7 +77,53 @@
         <span id="user-info"></span>
       </div>
     </header>
-    <section id="content"></section>
+
+    <!-- ===== V13: #content 有静态默认内容，不再依赖 JS 渲染 ===== -->
+    <section id="content">
+
+      <!-- 静态默认面板（JS 加载成功后会覆盖此内容） -->
+      <div class="welcome-banner" id="default-welcome">
+        <div class="welcome-text">
+          <h2 id="welcome-h2">欢迎回来，管理员</h2>
+          <p class="welcome-desc">艺安查控制台 · SaaS 艺人风险评估平台</p>
+        </div>
+        <div class="welcome-actions">
+          <button class="btn btn-primary" onclick="if(window.navigate)navigate('artists')">艺人管理</button>
+          <button class="btn btn-primary" onclick="if(window.navigate)navigate('events')">风险事件</button>
+          <button class="btn btn-primary" onclick="if(window.navigate)navigate('reports')">报告导出</button>
+        </div>
+      </div>
+
+      <div class="stat-cards" id="default-stats">
+        <div class="stat-card">
+          <span class="stat-icon icon-blue">*</span>
+          <div class="stat-value" id="st-artists">--</div>
+          <div class="stat-label">艺人总数</div>
+          <div class="stat-note" id="nt-artists">正在连接服务器...</div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon icon-yellow">⚠</span>
+          <div class="stat-value" id="st-events">--</div>
+          <div class="stat-label">风险事件</div>
+          <div class="stat-note" id="nt-events">正在连接服务器...</div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon icon-red">☠</span>
+          <div class="stat-value" id="st-highrisk">--</div>
+          <div class="stat-label">高风险艺人</div>
+          <div class="stat-note" id="nt-highrisk">正在连接服务器...</div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon icon-green">+</span>
+          <div class="stat-value" id="st-today">--</div>
+          <div class="stat-label">今日新增</div>
+          <div class="stat-note" id="nt-today">正在连接服务器...</div>
+        </div>
+      </div>
+
+      <div id="dash-recent"></div>
+
+    </section>
   </main>
 
   <!-- Modal -->
