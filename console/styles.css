@@ -1,5 +1,5 @@
 /* ============================================================
-   YC Console V11 - Modern Admin Panel
+   YC Console V12 — Modern Admin Panel (一次性根治版)
    Canvas background (z:0) + DOM overlay (z:1+)
    ============================================================ */
 
@@ -116,8 +116,8 @@ html,body{
 .top-right{display:flex;align-items:center;gap:12px}
 #user-info{font-size:13px;color:#64748b}
 
-/* Content */
-#content{flex:1;padding:24px 28px;overflow-y:auto}
+/* Content — 必须有滚动和内边距 */
+#content{flex:1;padding:24px 28px;overflow-y:auto;min-height:0}
 
 /* ===== TABLES ===== */
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -144,7 +144,7 @@ tr:last-child td{border-bottom:none}
   display:inline-flex;align-items:center;justify-content:center;
   padding:7px 16px;border:1px solid #e2e8f0;border-radius:8px;
   background:#fff;font-size:12.5px;font-weight:550;cursor:pointer;
-  transition:all .15s;gap:4px;
+  transition:all .15s;gap:4px;white-space:nowrap;
 }
 .btn:hover{border-color:#cbd5e1;background:#f8fafc}
 .btn-sm{padding:5px 11px;font-size:11.5px}
@@ -163,6 +163,7 @@ tr:last-child td{border-bottom:none}
 .stat-card:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.08)}
 .stat-value{font-size:28px;font-weight:800;color:#1e293b}
 .stat-label{font-size:12.5px;color:#94a3b8;margin-top:4px;font-weight:550}
+.stat-note{color:#94a3b8;font-size:11px;margin-top:6px;font-weight:400}
 .stat-icon{
   float:right;width:42px;height:42px;border-radius:11px;
   display:flex;align-items:center;justify-content:center;
@@ -191,11 +192,10 @@ tr:last-child td{border-bottom:none}
 .empty-state{
   text-align:center;padding:60px 20px;color:#94a3b8;
 }
-.empty-state .empty-icon{font-size:48px;margin-bottom:12px}
 .empty-state p{font-size:14px}
 
 /* Loading spinner */
-.loading{text-align:center;padding:60px 20px;color:#94a3b8}
+.loading{text-align:center;padding:40px 20px;color:#94a3b8}
 .spinner{
   display:inline-block;width:32px;height:32px;border:3px solid #e2e8f0;
   border-top-color:#4f8cff;border-radius:50%;
@@ -264,6 +264,23 @@ tr:last-child td{border-bottom:none}
   border-color:#4f8cff;box-shadow:0 0 0 3px rgba(79,140,255,.08)
 }
 
+/* ===== WELCOME BANNER (Dashboard) ===== */
+.welcome-banner{
+  background:linear-gradient(135deg,#4f8cff,#7c5cfc)!important;
+  border-radius:14px!important;padding:32px 32px 28px!important;
+  margin-bottom:24px;display:flex!important;align-items:center;justify-content:space-between;gap:24px;color:#fff!important
+}
+.welcome-banner h2{font-size:24px;font-weight:800;margin-bottom:8px}
+.welcome-desc{font-size:14px;opacity:.85}
+.welcome-actions{display:flex;gap:10px;flex-shrink:0}
+.welcome-actions .btn{
+  background:rgba(255,255,255,.2);color:#fff;border-color:rgba(255,255,255,.3);
+  font-weight:700;
+}
+.welcome-actions .btn:hover{background:rgba(255,255,255,.3)}
+
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+
 /* ===== RESPONSIVE ===== */
 @media(max-width:768px){
   #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:50;transform:translateX(-100%)}
@@ -271,6 +288,7 @@ tr:last-child td{border-bottom:none}
   #main{width:100%}
   .menu-btn{display:block}
   .stat-cards{grid-template-columns:repeat(2,1fr);gap:10px}
+  .dash-grid{grid-template-columns:repeat(2,1fr);gap:10px}
   .stat-card{padding:14px 16px}
   .stat-value{font-size:22px}
   #content{padding:16px}
@@ -279,8 +297,11 @@ tr:last-child td{border-bottom:none}
   .info-grid{grid-template-columns:1fr}
   .toolbar{flex-direction:column}
   .toolbar input,.toolbar select{width:100%}
+  .welcome-banner{flex-direction:column;text-align:center;padding:24px 20px}
+  .welcome-actions{width:100%;justify-content:center;flex-wrap:wrap}
 }
 @media(max-width:480px){
   .stat-cards{grid-template-columns:1fr}
+  .dash-grid{grid-template-columns:1fr}
   .login-card{padding:28px 24px 24px}
 }
