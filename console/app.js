@@ -196,11 +196,17 @@ if (nav) nav.addEventListener("click", function (e) {
 async function enterApp() {
   try {
     var av = $("app-view"), lv = $("login-view");
+    /* TRIPLE-DEFENSE: hide login view */
+    if (lv) {
+      lv.classList.add("login-hidden");
+      lv.style.display = "none";
+      lv.hidden = true;
+    }
+    /* Show app view */
     if (av) av.hidden = false;
-    if (lv) lv.style.display = "none";
     if (cv) { cv.style.display = "none"; }
 
-    // Show staff info
+    /* Show staff info */
     if (staff) {
       var sn = $("staff-name"); if (sn) sn.textContent = staff.real_name || staff.username;
       var sr = $("staff-role"); if (sr) sr.textContent = staff.role_label || staff.role;
@@ -224,7 +230,15 @@ function logout(msg) {
   localStorage.removeItem(LS_STAFF);
   var av = $("app-view"), lv = $("login-view");
   if (av) av.hidden = true;
-  if (lv) lv.style.display = "";
+  /* TRIPLE-DEFENSE: fully restore login view */
+  if (lv) {
+    lv.classList.remove("login-hidden");
+    lv.style.display = "";
+    lv.hidden = false;
+    lv.style.visibility = "";
+    lv.style.opacity = "";
+    lv.style.pointerEvents = "";
+  }
   if (uEl) uEl.textContent = "";
   if (pEl) pEl.textContent = "";
   pwdRaw = "";
@@ -698,6 +712,11 @@ function intakeStatusLabel(s) {
 }
 
 /* ===== INIT ===== */
+/* Safety: force correct initial state — ONLY one view visible */
+var av0 = $("app-view"), lv0 = $("login-view");
+if (av0) av0.hidden = true;
+if (lv0) { lv0.classList.remove("login-hidden"); lv0.style.display = ""; lv0.hidden = false; }
+
 if (token) {
   safeApi("GET", "/admin/auth/me").then(function (res) {
     if (res.ok && res.data) {
@@ -706,6 +725,9 @@ if (token) {
     } else {
       logout("\u767b\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55");
     }
+  }).catch(function () {
+    /* auth/me failed completely — stay at login */
+    logout("\u670d\u52a1\u5668\u8fde\u63a5\u5931\u8d25\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55");
   });
 } else {
   /* Not logged in, stay at login view */
