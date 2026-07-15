@@ -19,6 +19,13 @@ body {
   position: fixed; inset: 0; z-index: 10;
   display: flex; align-items: center; justify-content: center;
 }
+/* Triple-defense hide — must override everything */
+.login-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
 .login-card {
   background: #fff; border-radius: 16px;
   padding: 40px 36px; width: 360px; max-width: 90vw;
