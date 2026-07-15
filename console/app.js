@@ -93,7 +93,7 @@ window.addEventListener("resize", drawBg);
 var uEl = $("u");
 var pEl = $("p");
 var lb = $("lb");
-var le = ("le");
+var le = $("le");
 var pwdRaw = "";
 
 if (pEl) {
