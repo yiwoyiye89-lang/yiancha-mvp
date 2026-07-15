@@ -89,7 +89,7 @@
           <div class="search-bar"><input type="text" id="artist-search" placeholder="搜索艺人姓名..." /><button class="btn btn-primary btn-sm" id="artist-search-btn">搜索</button></div>
           <div class="toolbar-right"><select id="artist-level" class="select-sm"><option value="">所有等级</option><option value="S">S级</option><option value="A级">A级</option><option value="B级">B级</option><option value="C级">C级</option></select></div>
         </div>
-        <div class="table-container"><table class="data-table" id="artist-table"><thead><tr><th>ID</th><th>姓名</th><th>等级</th><th>风险分</th><th>经纪公司</th><th>代表作</th></tr></thead><tbody id="artist-tbody"><tr><td colspan="6" class="loading-row">正在加载艺人数据...</td></tr></tbody></table></div>
+        <div class="table-container"><table class="data-table" id="artist-table"><thead><tr><th>ID</th><th>姓名</th><th>等级</th><th>风险分</th><th>经纪公司</th><th>代表作</th><th>操作</th></tr></thead><tbody id="artist-tbody"><tr><td colspan="7" class="loading-row">正在加载艺人数据...</td></tr></tbody></table></div>
         <div class="pagination" id="artist-pagination"></div>
       </div>
 
@@ -99,7 +99,7 @@
           <div class="search-bar"><input type="text" id="event-search" placeholder="搜索事件..." /><button class="btn btn-primary btn-sm" id="event-search-btn">搜索</button></div>
           <div class="toolbar-right"><select id="event-level" class="select-sm"><option value="">所有级别</option><option value="S">S级</option><option value="A级">A级</option><option value="B级">B级</option><option value="C级">C级</option></select></div>
         </div>
-        <div class="table-container"><table class="data-table" id="event-table"><thead><tr><th>ID</th><th>艺人</th><th>事件类型</th><th>风险等级</th><th>日期</th><th>摘要</th></tr></thead><tbody id="event-tbody"><tr><td colspan="6" class="loading-row">正在加载风险事件...</td></tr></tbody></table></div>
+        <div class="table-container"><table class="data-table" id="event-table"><thead><tr><th>ID</th><th>艺人</th><th>事件类型</th><th>风险等级</th><th>日期</th><th>摘要</th><th>操作</th></tr></thead><tbody id="event-tbody"><tr><td colspan="7" class="loading-row">正在加载风险事件...</td></tr></tbody></table></div>
         <div class="pagination" id="event-pagination"></div>
       </div>
 
@@ -112,7 +112,7 @@
             <select id="user-status-filter" class="select-sm"><option value="">全部状态</option><option value="true">启用</option><option value="false">停用</option></select>
           </div>
         </div>
-        <div class="table-container"><table class="data-table" id="user-table"><thead><tr><th>ID</th><th>昵称/姓名</th><th>手机号</th><th>公司</th><th>套餐</th><th>认证</th><th>状态</th><th>注册时间</th></tr></thead><tbody id="user-tbody"><tr><td colspan="8" class="loading-row">正在加载用户数据...</td></tr></tbody></table></div>
+        <div class="table-container"><table class="data-table" id="user-table"><thead><tr><th>ID</th><th>昵称/姓名</th><th>手机号</th><th>公司</th><th>套餐</th><th>认证</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead><tbody id="user-tbody"><tr><td colspan="9" class="loading-row">正在加载用户数据...</td></tr></tbody></table></div>
         <div class="pagination" id="user-pagination"></div>
       </div>
 
@@ -130,7 +130,7 @@
           <div class="search-bar"><input type="text" id="lead-search" placeholder="搜索线索..." /><button class="btn btn-primary btn-sm" id="lead-search-btn">搜索</button></div>
           <div class="toolbar-right"><select id="lead-status-filter" class="select-sm"><option value="">全部状态</option><option value="pending">待处理</option><option value="contacted">已联系</option><option value="converted">已转化</option><option value="rejected">已拒绝</option></select></div>
         </div>
-        <div class="table-container"><table class="data-table" id="lead-table"><thead><tr><th>ID</th><th>公司/联系人</th><th>联系方式</th><th>需求描述</th><th>状态</th><th>负责人</th><th>创建时间</th></tr></thead><tbody id="lead-tbody"><tr><td colspan="7" class="loading-row">正在加载商务线索...</td></tr></tbody></table></div>
+        <div class="table-container"><table class="data-table" id="lead-table"><thead><tr><th>ID</th><th>公司/联系人</th><th>联系方式</th><th>需求描述</th><th>状态</th><th>负责人</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="lead-tbody"><tr><td colspan="8" class="loading-row">正在加载商务线索...</td></tr></tbody></table></div>
         <div class="pagination" id="lead-pagination"></div>
       </div>
 
@@ -140,7 +140,7 @@
           <div class="search-bar"><input type="text" id="intake-search" placeholder="搜索入驻申请..." /><button class="btn btn-primary btn-sm" id="intake-search-btn">搜索</button></div>
           <div class="toolbar-right"><select id="intake-status-filter" class="select-sm"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已通过</option><option value="rejected">已驳回</option></select></div>
         </div>
-        <div class="table-container"><table class="data-table" id="intake-table"><thead><tr><th>ID</th><th>艺人名称</th><th>申请人</th><th>类型</th><th>状态</th><th>提交时间</th></tr></thead><tbody id="intake-tbody"><tr><td colspan="6" class="loading-row">正在加载入驻申请...</td></tr></tbody></table></div>
+        <div class="table-container"><table class="data-table" id="intake-table"><thead><tr><th>ID</th><th>艺人名称</th><th>申请人</th><th>类型</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody id="intake-tbody"><tr><td colspan="7" class="loading-row">正在加载入驻申请...</td></tr></tbody></table></div>
         <div class="pagination" id="intake-pagination"></div>
       </div>
 
@@ -150,7 +150,7 @@
           <button class="btn btn-primary btn-sm" id="invite-gen-btn">&#x2795; 生成邀请码</button>
         </div>
         <div class="stat-cords-mini" id="invite-stats"><span>总数: --</span><span>有效: --</span></div>
-        <div class="table-container"><table class="data-table" id="invite-table"><thead><tr><th>ID</th><th>邀请码</th><th>使用次数</th><th>上限</th><th>过期时间</th><th>状态</th></tr></thead><tbody id="invite-tbody"><tr><td colspan="6" class="loading-row">正在加载邀请码...</td></tr></tbody></table></div>
+        <div class="table-container"><table class="data-table" id="invite-table"><thead><tr><th>ID</th><th>邀请码</th><th>使用次数</th><th>上限</th><th>过期时间</th><th>状态</th><th>操作</th></tr></thead><tbody id="invite-tbody"><tr><td colspan="7" class="loading-row">正在加载邀请码...</td></tr></tbody></table></div>
       </div>
 
       <!-- ===== PRICING ===== -->
