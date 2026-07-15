@@ -327,9 +327,9 @@ window.YC_showArtistDetail=function(artistId){
       {label:"ID",value:row.id},{label:"\u59d3\u540d",value:row.name},
       {label:"\u7b49\u7ea7",html:levelBadge(row.heat_level)},
       {label:"\u98ce\u9669\u8bc4\u5206",html:riskBadge(row.risk_score)},
-      {label:\u7ecf\u7eaa\u516c\u53f8,value:row.agency},{label:\u4ee3\u8868\u4f5c,value:row.masterpieces},
-      {label:"\u51fa\u751f\u65e5\u671f,value:row.birthday},{label:\u51fa\u7513\u5730,value:row.birthplace},
-      {label:"\u6c11\u65cf,value:row.ethnicity},{label:"\u661f\u5ea7,value:row.constellation},
+             {label:"\u7ecf\u7eaa\u516c\u53f8",value:row.agency},{label:"\u4ee3\u8868\u4f5c",value:row.masterpieces},
+             {label:"\u51fa\u751f\u65e5\u671f",value:row.birthday},{label:"\u51fa\u7513\u5730",value:row.birthplace},
+             {label:"\u6c11\u65cf",value:row.ethnicity},{label:"\u661f\u5ea7",value:row.constellation},
       {label:"\u7c89\u4e1f\u91cf",value:row.fan_count},{label:"\u70ed\u5ea6\u503c",value:row.heat_score}
     ]);
   });
@@ -375,7 +375,7 @@ window.YC_showEventDetail=function(eventId){
       {label:"ID",value:row.id},{label:"\u827a\u4eba",value:row.artist_name},
       {label:"\u4e8b\u4ef6\u7c7b\u578b",value:row.event_type||row.category},
       {label:"\u98ce\u9669\u7ea7\u522b",html:"<span class='badge badge-red'>"+esc(row.risk_level||row.heat_level||"-")+"</span>"},
-      {label:"\u53d1\u751f\u65e5\u671f,value:row.event_date?row.event_date.substring(0,10):"-"},
+      {label:"\u53d1\u751f\u65e5\u671f",value:row.event_date?row.event_date.substring(0,10):"-"},
       {label:"\u6458\u8981",value:row.summary||row.description,"html":true},
       {label:"\u6765\u6e90",value:row.source_url||"-"}
     ]);
@@ -443,8 +443,8 @@ window.YC_showUserDetail=async function(userId){
     {label:"ID",value:row.id},{label:"\u6635\u79f0",value:row.nickname},{label:"\u771f\u5b9e\u59d3\u540d",value:row.real_name},
     {label:"\u624b\u673a\u53f7",value:maskPhone(row.phone)},{label:"\u516c\u53f8",value:row.company},
     {label:"\u5957\u9910",html:"<span class='badge badge-blue'>"+(row.user_type||"-")+"</span>"},
-    {label:"\u8ba4\u8bc1",value:row.verified?\u5df2\u8ba4\u8bc1:"\u672a\u8ba4\u8bc1"},{label:"\u72b6\u6001",html:row.is_active!==false?"<span class='badge badge-green'>\u542f\u7528</span>":"<span class='badge badge-red'>\u505c\u7528</span>"},
-    {label:"\u6ce8\u518c\u65f6\u95f4,value:fmtDate(row.created_at)}
+    {label:"\u8ba4\u8bc1",value:row.verified?"\u5df2\u8ba4\u8bc1":"\u672a\u8ba4\u8bc1"},{label:"\u72b6\u6001",html:row.is_active!==false?"<span class='badge badge-green'>\u542f\u7528</span>":"<span class='badge badge-red'>\u505c\u7528</span>"},
+    {label:"\u6ce8\u518c\u65f6\u95f4",value:fmtDate(row.created_at)}
   ]);
 };
 
@@ -569,7 +569,7 @@ window.YC_showLeadDetail=async function(leadId){
     {label:"\u9700\u6c42\u63cf\u8ff0",value:row.requirements,"html":true},
     {label:"\u72b6\u6001",html:statusBadge(row.status)},
     {label:"\u8d1f\u8d23\u4eba",value:row.assignee_name||"\u672a\u5206\u914d"},
-    {label:"\u521b\u5efa\u65f6\u95f4,value:fmtDate(row.created_at)}
+    {label:"\u521b\u5efa\u65f6\u95f4",value:fmtDate(row.created_at)}
   ]);
 };
 
@@ -613,7 +613,7 @@ function renderIntakes(p){
 }
 
 window.YC_approveIntake=async function(intakeId){
-  showModal("\u786e\u8ba4\u5ba1\u6838","\u<p style='padding:16px;text-align:center;'>\u786e\u8ba4<b>\u901A\u8fc7</b>\u6b64\u5165\u9a7b\u7533\u8bf7\uff1f</p>",
+  showModal("\u786e\u8ba4\u5ba1\u6838","<p style='padding:16px;text-align:center;'>\u786e\u8ba4<b>\u901A\u8fc7</b>\u6b64\u5165\u9a7b\u7533\u8bf7\uff1f</p>",
   "<button type='button' onclick='YC_doApproveIntake("+(intakeId||0)+")' class='btn btn-success btn-sm'>\u786e\u8ba4\u901a\u8fc7</button> "+
   "<button type='button' onclick=\"document.getElementById('modal-layer').hidden=true\" class='btn btn-ghost btn-sm'>\u53d6\u6d88</button>");
 };
