@@ -844,6 +844,7 @@ function renderQuality() {
     api("/admin/quality/fill-queue").then(function (fq) {
       renderFillQueue(fq || { items: [] });
     }).catch(function () {});
+    renderSpotCheck();
   }).catch(function (err) {
     var msg = esc(err && err.message ? err.message : String(err));
     if (cardsEl) cardsEl.innerHTML = statCard("&#x26D4;", "!", "加载失败", msg, "icon-red");
@@ -1023,6 +1024,97 @@ window.YC_recordSnapshot = async function () {
   else { toast("记录失败: " + (res.error || "-")); }
 };
 
+/* ===== 补全质量抽检 ===== */
+function renderSpotCheck() {
+  var cardsEl = $("spotcheck-cards");
+  if (cardsEl) cardsEl.innerHTML = statCard("&#x1F50D;", "...", "抽检统计", "加载中");
+  api("/admin/quality/spot-check/stats").then(function (d) {
+    if (!d) return;
+    if (cardsEl) {
+      cardsEl.innerHTML =
+        statCard("&#x1F50D;", d.total || 0, "已抽检条数", "人工核验累计", "icon-blue") +
+        statCard("&#x2705;", (d.pass_rate || 0) + "%", "合格率", "合格 / 总抽检", "icon-green") +
+        statCard("&#x2753;", d.doubt || 0, "存疑", "需复核", "icon-yellow") +
+        statCard("&#x274C;", d.fail || 0, "不合格", "已判错误", "icon-red");
+    }
+    var bf = $("spotcheck-by-field");
+    if (bf) {
+      if (!d.by_field || !d.by_field.length) bf.innerHTML = "<p class='muted' style='color:#94a3b8;font-size:13px'>暂无抽检数据</p>";
+      else {
+        bf.innerHTML = d.by_field.slice(0, 12).map(function (f) {
+          var rate = f.total ? Math.round(f.pass / f.total * 100) : 0;
+          return "<div style='display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px'>" +
+            "<div style='width:90px;color:#475569'>" + esc(f.label) + "</div>" +
+            covBar(rate) +
+            "<div style='width:120px;text-align:right;color:#16a34a'>" + rate + "% (" + f.pass + "/" + f.total + ")</div>" +
+            "</div>";
+        }).join("");
+      }
+    }
+    var rc = $("spotcheck-recent");
+    if (rc) {
+      if (!d.recent || !d.recent.length) rc.innerHTML = "<p class='muted' style='color:#94a3b8;font-size:13px'>暂无抽检记录</p>";
+      else rc.innerHTML = d.recent.map(function (r) {
+        var vcolor = r.verdict === "pass" ? "#16a34a" : (r.verdict === "doubt" ? "#f59e0b" : "#dc2626");
+        var vtext = r.verdict === "pass" ? "合格" : (r.verdict === "doubt" ? "存疑" : "不合格");
+        return "<div style='display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:13px'>" +
+          "<span><strong>" + esc(r.name) + "</strong> · " + esc(r.field_label) + "</span>" +
+          "<span style='color:" + vcolor + ";font-weight:600'>" + vtext + "</span></div>";
+      }).join("");
+    }
+  }).catch(function () {});
+}
+
+window.YC_spotCheckSample = async function () {
+  var tbody = $("spotcheck-tbody"); if (!tbody) return;
+  tbody.innerHTML = "<tr><td colspan='5' class='loading-row'>正在抽取样本...</td></tr>";
+  var res = await safeApi("GET", "/admin/quality/spot-check/sample?limit=8");
+  if (!res.ok) { tbody.innerHTML = "<tr><td colspan='5' class='error-row'>&#x26A0; " + esc(res.error) + "</td></tr>"; return; }
+  var items = res.data.items || [];
+  if (!items.length) {
+    tbody.innerHTML = "<tr><td colspan='5' class='empty-row'>暂无可抽检样本（先通过「补」或「⚡自动」补全，再回来抽检）</td></tr>";
+    return;
+  }
+  tbody.innerHTML = items.map(function (it) {
+    var val = it.current_value || "(空)";
+    var valDisp = val.length > 60 ? val.substring(0, 60) + "…" : val;
+    var src = it.source === "manual" ? "手动" : "自动";
+    return "<tr data-qid='" + escAttr(it.queue_id) + "' data-aid='" + it.artist_id + "' data-fk='" + escAttr(it.field_key) + "' data-src='" + escAttr(it.source) + "'>" +
+      "<td><strong>" + esc(it.name) + "</strong> <span style='color:#94a3b8'>#" + it.artist_id + "</span></td>" +
+      "<td>" + esc(it.field_label) + "</td>" +
+      "<td style='max-width:320px;word-break:break-all;color:#334155'>" + esc(valDisp) + "</td>" +
+      "<td><span class='badge " + (it.source === "manual" ? "badge-blue" : "badge-purple") + "'>" + src + "</span></td>" +
+      "<td>" +
+        "<button class='btn btn-success btn-xs' onclick='YC_spotCheckSubmit(this,\"pass\")'>合格</button> " +
+        "<button class='btn btn-warning btn-xs' onclick='YC_spotCheckSubmit(this,\"doubt\")'>存疑</button> " +
+        "<button class='btn btn-danger btn-xs' onclick='YC_spotCheckSubmit(this,\"fail\")'>不合格</button>" +
+      "</td></tr>";
+  }).join("");
+};
+
+window.YC_spotCheckSubmit = async function (btn, verdict) {
+  var tr = btn.closest("tr"); if (!tr) return;
+  var payload = {
+    queue_id: tr.dataset.qid ? parseInt(tr.dataset.qid) : null,
+    artist_id: parseInt(tr.dataset.aid),
+    field_key: tr.dataset.fk,
+    source: tr.dataset.src,
+    verdict: verdict,
+  };
+  var res = await safeApi("POST", "/admin/quality/spot-check", payload);
+  if (res.ok) {
+    var vcolor = verdict === "pass" ? "#16a34a" : (verdict === "doubt" ? "#f59e0b" : "#dc2626");
+    var vtext = verdict === "pass" ? "合格" : (verdict === "doubt" ? "存疑" : "不合格");
+    tr.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+    var td = tr.lastElementChild;
+    td.innerHTML = "<span style='color:" + vcolor + ";font-weight:600'>&#x2713; " + vtext + "</span>";
+    toast("已记录抽检：" + vtext);
+    renderSpotCheck();
+  } else {
+    toast("提交失败: " + (res.error || "-"));
+  }
+};
+
 function buildConfigForm(cfg){
   var keys=Object.keys(cfg).sort(); if(keys.length===0)return "<p style='color:#888;padding:16px'>\u6682\u65e0\u914d\u7f6e\u9879\u3002\u70b9\u51fb\u4fdd\u5b58\u53ef\u521d\u59cb\u5316\u914d\u7f6e\u3002</p>";
   var fields=""; keys.forEach(function(k){
@@ -1063,9 +1155,10 @@ if(token){
   }).catch(function(){logout("\u670d\u52a1\u5668\u8fde\u63a5\u5931\u8d25\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55");});
 }
 
-/* 数据质检刷新按钮 + 趋势快照按钮 */
+/* 数据质检刷新按钮 + 趋势快照按钮 + 抽检抽样按钮 */
 var qrb=$("quality-refresh-btn"); if(qrb)qrb.addEventListener("click",function(){renderQuality();});
 var qsb=$("quality-snapshot-btn"); if(qsb)qsb.addEventListener("click",function(){window.YC_recordSnapshot();});
+var ssb=$("spotcheck-sample-btn"); if(ssb)ssb.addEventListener("click",function(){window.YC_spotCheckSample();});
 
 /* ===== JS ERROR DISPLAY ===== */
 window.onerror=function(msg,src,line,col,err){
