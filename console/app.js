@@ -830,13 +830,20 @@ function renderQuality() {
           "<td><strong>" + esc(row.name || "-") + "</strong></td>" +
           "<td>" + esc(row.heat_level || "-") + "</td>" +
           "<td><span style='color:#dc2626;background:#fee2e2;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:600'>" + (row.missing || 0) + "</span></td>" +
-          "<td><button class='btn btn-ghost btn-sm' onclick='YC_showArtistDetail(" + (row.id || 0) + ")'>查看</button> <button class='btn btn-primary btn-sm' onclick='YC_openCompletion(" + (row.id || 0) + ")'>补全</button></td>";
+          "<td><button class='btn btn-ghost btn-sm' onclick='YC_showArtistDetail(" + (row.id || 0) + ")'>查看</button> <button class='btn btn-primary btn-sm' onclick='YC_openCompletion(" + (row.id || 0) + ")'>补</button> <button class='btn btn-warning btn-sm' onclick='YC_queueFill(" + (row.id || 0) + ")'>&#x26A1;自动</button></td>";
       }        , 5, "暂无缺失较多的艺人");
     }
     // 覆盖度趋势
     api("/admin/quality/trend").then(function (td) {
       renderQualityTrend(td || { series: [] });
     }).catch(function () { /* 趋势非关键，失败不影响主看板 */ });
+    // 本周补全进展 + 自动补全队列
+    api("/admin/quality/weekly-progress").then(function (wp) {
+      renderWeeklyProgress(wp || { has_data: false });
+    }).catch(function () {});
+    api("/admin/quality/fill-queue").then(function (fq) {
+      renderFillQueue(fq || { items: [] });
+    }).catch(function () {});
   }).catch(function (err) {
     var msg = esc(err && err.message ? err.message : String(err));
     if (cardsEl) cardsEl.innerHTML = statCard("&#x26D4;", "!", "加载失败", msg, "icon-red");
@@ -902,6 +909,75 @@ function renderQualityTrend(td) {
       }
     }
   });
+}
+
+window.YC_queueFill = async function (artistId) {
+  var res = await safeApi("POST", "/admin/quality/artist/" + artistId + "/fill");
+  if (res.ok) {
+    if (res.data && res.data.queued) toast("已加入自动补全队列，消费自动化将尽快处理并写回");
+    else toast((res.data && res.data.msg) || "已在队列中");
+    renderQuality();
+  } else {
+    toast("加入队列失败: " + (res.error || "-"));
+  }
+};
+
+function renderWeeklyProgress(wp) {
+  var el = $("quality-weekly"); if (!el) return;
+  if (!wp || !wp.has_data) {
+    el.innerHTML = "<p class='muted' style='color:#94a3b8;font-size:13px'>尚无足够快照数据（需至少 2 天记录）。每日自动快照生成后，这里会展示本周覆盖率涨跌。</p>";
+    return;
+  }
+  var o = wp.overall || {};
+  var delta = o.delta || 0;
+  var arrow = delta > 0 ? "▲ +" : (delta < 0 ? "▼ " : "— ");
+  var dColor = delta > 0 ? "#16a34a" : (delta < 0 ? "#dc2626" : "#64748b");
+  var html = "<div style='padding:6px 0'>" +
+    "<div style='font-size:12px;color:#64748b'>" + esc(wp.compare_date) + " → " + esc(wp.latest_date) + "（间隔 " + (wp.days_gap || 0) + " 天）</div>" +
+    "<div style='display:flex;align-items:baseline;gap:10px;margin-top:2px'>" +
+      "<span style='font-size:30px;font-weight:700;color:#7c3aed'>" + (o.now || 0) + "%</span>" +
+      "<span style='font-size:15px;font-weight:600;color:" + dColor + "'>" + arrow + delta + "%</span>" +
+    "</div></div>";
+  var lv = (wp.by_level || []).map(function (b) {
+    var d = b.delta || 0; var c = d > 0 ? "#16a34a" : (d < 0 ? "#dc2626" : "#64748b");
+    return "<div style='display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #f1f5f9;font-size:13px'>" +
+      "<span>" + esc(b.heat_level) + "级</span>" +
+      "<span>" + (b.now || 0) + "% <span style='color:" + c + "'>(" + (d > 0 ? "+" : "") + d + ")</span></span>" +
+      "</div>";
+  }).join("");
+  if (lv) html += "<div style='margin-top:4px'>" + lv + "</div>";
+  var g = (wp.fields_top_gain || []);
+  if (g.length) {
+    html += "<div style='margin-top:8px;font-size:12px;color:#16a34a'>↑ 涨幅最大：" +
+      g.map(function (f) { return esc(f.label) + " +" + f.delta + "%"; }).join("、") + "</div>";
+  }
+  el.innerHTML = html;
+}
+
+function renderFillQueue(fq) {
+  var el = $("quality-queue"); if (!el) return;
+  var badge = $("quality-queue-badge");
+  var pending = fq.pending || 0;
+  if (badge) {
+    if (pending > 0) { badge.style.display = ""; badge.textContent = pending + " 待处理"; }
+    else { badge.style.display = "none"; }
+  }
+  var items = fq.items || [];
+  if (!items.length) {
+    el.innerHTML = "<p class='muted' style='color:#94a3b8;font-size:13px'>队列为空。在下方缺失 Top 点「⚡自动」即可入队，由消费自动化补全后写回。</p>";
+    return;
+  }
+  var html = items.slice(0, 12).map(function (q) {
+    var color = q.status === "pending" ? "#f59e0b" : (q.status === "done" ? "#16a34a" : (q.status === "failed" ? "#dc2626" : "#3b82f6"));
+    var label = q.status === "pending" ? "待处理" : (q.status === "done" ? "已完成" : (q.status === "failed" ? "失败" : "处理中"));
+    var ff = (q.filled_fields || []).length;
+    return "<div style='display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px'>" +
+      "<span><strong>" + esc(q.name) + "</strong> <span style='color:#94a3b8'>#" + q.artist_id + "</span></span>" +
+      "<span style='color:" + color + ";font-weight:600'>" + label + (ff ? (" · " + ff + " 字段") : "") + "</span>" +
+      "</div>";
+  }).join("");
+  if (fq.count > 12) html += "<div style='padding:5px 0;color:#94a3b8;font-size:12px'>…还有 " + (fq.count - 12) + " 条</div>";
+  el.innerHTML = html;
 }
 
 window.YC_openCompletion = function (artistId) {
