@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>艺安查 · 管理后台</title>
-<link rel="stylesheet" href="styles.css">
+      <link rel="stylesheet" href="styles.css">
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -185,6 +186,18 @@
         </div>
         <h4 style="margin:20px 0 10px">&#x26A0; 缺失字段最多艺人 Top 15（待补全）</h4>
         <div class="table-container"><table class="data-table" id="quality-table"><thead><tr><th>ID</th><th>姓名</th><th>等级</th><th>缺失字段数</th><th>操作</th></tr></thead><tbody id="quality-tbody"><tr><td colspan="5" class="loading-row">正在加载...</td></tr></tbody></table></div>
+
+        <h4 style="margin:24px 0 10px">&#x1F4C8; 覆盖度趋势（每日快照）</h4>
+        <div class="dash-panel">
+          <div class="toolbar" style="border:0;padding:0;margin-bottom:8px">
+            <div class="search-bar" style="font-size:13px;color:#64748b" id="quality-trend-note">每日自动记录一次覆盖率，观察补全进度。</div>
+            <div class="toolbar-right">
+              <button class="btn btn-ghost btn-sm" id="quality-snapshot-btn">&#x1F4BE; 立即记录今日</button>
+            </div>
+          </div>
+          <div class="chart-box" style="position:relative;width:100%;height:300px"><canvas id="quality-trend-chart"></canvas></div>
+          <p id="quality-trend-empty" style="color:#94a3b8;font-size:13px;padding:12px 0;display:none">暂无趋势数据。点击「立即记录今日」生成第一笔快照，之后每日自动记录。</p>
+        </div>
       </div>
 
     </section><!-- /#content -->
