@@ -87,7 +87,7 @@
       <div id="page-artists" class="page" hidden>
         <div class="toolbar">
           <div class="search-bar"><input type="text" id="artist-search" placeholder="搜索艺人姓名..." /><button class="btn btn-primary btn-sm" id="artist-search-btn">搜索</button></div>
-          <div class="toolbar-right"><select id="artist-level" class="select-sm"><option value="">所有等级</option><option value="S">S级</option><option value="A级">A级</option><option value="B级">B级</option><option value="C级">C级</option></select></div>
+          <div class="toolbar-right"><select id="artist-level" class="select-sm"><option value="">所有等级</option><option value="S">S级</option><option value="A级">A级</option><option value="B级">B级</option><option value="C级">C级</option></select><button class="btn btn-ghost btn-sm" id="export-artists-btn" style="margin-left:8px">⬇ 导出</button></div>
         </div>
         <div class="table-container"><table class="data-table" id="artist-table"><thead><tr><th>ID</th><th>姓名</th><th>等级</th><th>风险分</th><th>经纪公司</th><th>代表作</th><th>操作</th></tr></thead><tbody id="artist-tbody"><tr><td colspan="7" class="loading-row">正在加载艺人数据...</td></tr></tbody></table></div>
         <div class="pagination" id="artist-pagination"></div>
@@ -97,7 +97,7 @@
       <div id="page-events" class="page" hidden>
         <div class="toolbar">
           <div class="search-bar"><input type="text" id="event-search" placeholder="搜索事件..." /><button class="btn btn-primary btn-sm" id="event-search-btn">搜索</button></div>
-          <div class="toolbar-right"><select id="event-level" class="select-sm"><option value="">所有级别</option><option value="S">S级</option><option value="A级">A级</option><option value="B级">B级</option><option value="C级">C级</option></select></div>
+          <div class="toolbar-right"><select id="event-level" class="select-sm"><option value="">所有级别</option><option value="S">S级</option><option value="A级">A级</option><option value="B级">B级</option><option value="C级">C级</option></select><button class="btn btn-ghost btn-sm" id="export-events-btn" style="margin-left:8px">⬇ 导出</button></div>
         </div>
         <div class="table-container"><table class="data-table" id="event-table"><thead><tr><th>ID</th><th>艺人</th><th>事件类型</th><th>风险等级</th><th>日期</th><th>摘要</th><th>操作</th></tr></thead><tbody id="event-tbody"><tr><td colspan="7" class="loading-row">正在加载风险事件...</td></tr></tbody></table></div>
         <div class="pagination" id="event-pagination"></div>
@@ -109,7 +109,7 @@
           <div class="search-bar"><input type="text" id="user-search" placeholder="手机号/昵称/公司..." /><button class="btn btn-primary btn-sm" id="user-search-btn">搜索</button></div>
           <div class="toolbar-right">
             <select id="user-type-filter" class="select-sm"><option value="">全部套餐</option><option value="free">免费版</option><option value="personal">个人版</option><option value="professional">专业版</option><option value="enterprise">企业版</option></select>
-            <select id="user-status-filter" class="select-sm"><option value="">全部状态</option><option value="true">启用</option><option value="false">停用</option></select>
+            <select id="user-status-filter" class="select-sm"><option value="">全部状态</option><option value="true">启用</option><option value="false">停用</option></select><button class="btn btn-ghost btn-sm" id="export-users-btn" style="margin-left:8px">⬇ 导出</button>
           </div>
         </div>
         <div class="table-container"><table class="data-table" id="user-table"><thead><tr><th>ID</th><th>昵称/姓名</th><th>手机号</th><th>公司</th><th>套餐</th><th>认证</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead><tbody id="user-tbody"><tr><td colspan="9" class="loading-row">正在加载用户数据...</td></tr></tbody></table></div>
@@ -128,7 +128,7 @@
       <div id="page-leads" class="page" hidden>
         <div class="toolbar">
           <div class="search-bar"><input type="text" id="lead-search" placeholder="搜索线索..." /><button class="btn btn-primary btn-sm" id="lead-search-btn">搜索</button></div>
-          <div class="toolbar-right"><select id="lead-status-filter" class="select-sm"><option value="">全部状态</option><option value="pending">待处理</option><option value="contacted">已联系</option><option value="converted">已转化</option><option value="rejected">已拒绝</option></select></div>
+          <div class="toolbar-right"><select id="lead-status-filter" class="select-sm"><option value="">全部状态</option><option value="pending">待处理</option><option value="contacted">已联系</option><option value="converted">已转化</option><option value="rejected">已拒绝</option></select><button class="btn btn-ghost btn-sm" id="export-leads-btn" style="margin-left:8px">⬇ 导出</button></div>
         </div>
         <div class="table-container"><table class="data-table" id="lead-table"><thead><tr><th>ID</th><th>公司/联系人</th><th>联系方式</th><th>需求描述</th><th>状态</th><th>负责人</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="lead-tbody"><tr><td colspan="8" class="loading-row">正在加载商务线索...</td></tr></tbody></table></div>
         <div class="pagination" id="lead-pagination"></div>
@@ -138,7 +138,7 @@
       <div id="page-intakes" class="page" hidden>
         <div class="toolbar">
           <div class="search-bar"><input type="text" id="intake-search" placeholder="搜索入驻申请..." /><button class="btn btn-primary btn-sm" id="intake-search-btn">搜索</button></div>
-          <div class="toolbar-right"><select id="intake-status-filter" class="select-sm"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已通过</option><option value="rejected">已驳回</option></select></div>
+          <div class="toolbar-right"><select id="intake-status-filter" class="select-sm"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已通过</option><option value="rejected">已驳回</option></select><button class="btn btn-ghost btn-sm" id="export-intakes-btn" style="margin-left:8px">⬇ 导出</button></div>
         </div>
         <div class="table-container"><table class="data-table" id="intake-table"><thead><tr><th>ID</th><th>艺人名称</th><th>申请人</th><th>类型</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody id="intake-tbody"><tr><td colspan="7" class="loading-row">正在加载入驻申请...</td></tr></tbody></table></div>
         <div class="pagination" id="intake-pagination"></div>
