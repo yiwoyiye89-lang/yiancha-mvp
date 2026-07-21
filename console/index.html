@@ -41,6 +41,7 @@
       <a class="nav-item" data-page="intakes"><span class="nav-icon">&#x270D;&#xFE0F;</span> 入驻审核</a>
       <a class="nav-item" data-page="invites"><span class="nav-icon">&#x1F4CB;</span> 邀请码</a>
       <a class="nav-item" data-page="pricing"><span class="nav-icon">&#x1F4B0;</span> 撮合配置</a>
+      <a class="nav-item" data-page="quality"><span class="nav-icon">&#x1F83D;</span> 数据质检</a>
     </nav>
     <div class="sidebar-footer">
       <button class="btn btn-ghost btn-sm" id="logout-btn">退出登录</button>
@@ -163,6 +164,27 @@
         </div>
         <h4 style="margin:20px 0 10px">撮合请求列表</h4>
         <div class="table-container"><table class="data-table" id="pricing-table"><thead><tr><th>ID</th><th>品牌方</th><th>预算范围</th><th>行业</th><th>状态</th><th>创建时间</th></tr></thead><tbody id="pricing-tbody"><tr><td colspan="6" class="loading-row">正在加载撮合请求...</td></tr></tbody></table></div>
+      </div>
+
+      <!-- ===== QUALITY (数据质检/覆盖度) ===== -->
+      <div id="page-quality" class="page" hidden>
+        <div class="toolbar">
+          <div class="search-bar"><strong style="font-size:15px">&#x1F83D; 数据质检 · 覆盖度看板</strong></div>
+          <div class="toolbar-right"><button class="btn btn-primary btn-sm" id="quality-refresh-btn">&#x21BB; 刷新</button></div>
+        </div>
+        <div class="stat-cards" id="quality-cards"></div>
+        <div class="dash-grid">
+          <div class="dash-panel">
+            <h3>&#x1F4CA; 字段覆盖度（按字段）</h3>
+            <div id="quality-fields" class="info-grid"><p>加载中...</p></div>
+          </div>
+          <div class="dash-panel">
+            <h3>&#x1F4E6; 分热度等级覆盖度</h3>
+            <div id="quality-by-level" class="info-grid"><p>加载中...</p></div>
+          </div>
+        </div>
+        <h4 style="margin:20px 0 10px">&#x26A0; 缺失字段最多艺人 Top 15（待补全）</h4>
+        <div class="table-container"><table class="data-table" id="quality-table"><thead><tr><th>ID</th><th>姓名</th><th>等级</th><th>缺失字段数</th><th>操作</th></tr></thead><tbody id="quality-tbody"><tr><td colspan="5" class="loading-row">正在加载...</td></tr></tbody></table></div>
       </div>
 
     </section><!-- /#content -->
