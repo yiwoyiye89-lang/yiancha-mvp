@@ -830,9 +830,13 @@ function renderQuality() {
           "<td><strong>" + esc(row.name || "-") + "</strong></td>" +
           "<td>" + esc(row.heat_level || "-") + "</td>" +
           "<td><span style='color:#dc2626;background:#fee2e2;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:600'>" + (row.missing || 0) + "</span></td>" +
-          "<td><button class='btn btn-ghost btn-sm' onclick='YC_showArtistDetail(" + (row.id || 0) + ")'>查看</button></td>";
-      }, 5, "暂无缺失较多的艺人");
+          "<td><button class='btn btn-ghost btn-sm' onclick='YC_showArtistDetail(" + (row.id || 0) + ")'>查看</button> <button class='btn btn-primary btn-sm' onclick='YC_openCompletion(" + (row.id || 0) + ")'>补全</button></td>";
+      }        , 5, "暂无缺失较多的艺人");
     }
+    // 覆盖度趋势
+    api("/admin/quality/trend").then(function (td) {
+      renderQualityTrend(td || { series: [] });
+    }).catch(function () { /* 趋势非关键，失败不影响主看板 */ });
   }).catch(function (err) {
     var msg = esc(err && err.message ? err.message : String(err));
     if (cardsEl) cardsEl.innerHTML = statCard("&#x26D4;", "!", "加载失败", msg, "icon-red");
@@ -841,6 +845,107 @@ function renderQuality() {
     if (tbody) tbody.innerHTML = "<tr><td colspan='5' class='error-text'>" + msg + "</td></tr>";
   });
 }
+
+function renderQualityTrend(td) {
+  var cv = $("quality-trend-chart");
+  var emptyEl = $("quality-trend-empty");
+  if (!cv) return;
+  if (!td || !td.series || !td.series.length) {
+    cv.style.display = "none";
+    if (emptyEl) {
+      emptyEl.style.display = "";
+      emptyEl.innerHTML = "暂无趋势数据。<button class='btn btn-primary btn-xs' style='margin-left:8px' onclick='YC_recordSnapshot()'>立即记录今日快照</button> 之后每日自动记录，可观察补全进度曲线。";
+    }
+    return;
+  }
+  cv.style.display = "";
+  if (emptyEl) emptyEl.style.display = "none";
+  if (typeof Chart === "undefined") {
+    cv.style.display = "none";
+    if (emptyEl) { emptyEl.style.display = ""; emptyEl.textContent = "图表库未加载（检查网络是否可访问 CDN），趋势数据已就绪，刷新页面重试即可。"; }
+    return;
+  }
+  var labels = td.series.map(function (s) { return s.date; });
+  var overall = td.series.map(function (s) { return s.overall_coverage; });
+  var levelKeys = {};
+  td.series.forEach(function (s) { (s.by_level || []).forEach(function (b) { levelKeys[b.heat_level] = true; }); });
+  var colors = { S: "#f59e0b", A: "#3b82f6", B: "#16a34a", C: "#94a3b8" };
+  var datasets = [{
+    label: "整体覆盖率", data: overall, borderColor: "#7c3aed",
+    backgroundColor: "rgba(124,58,237,0.12)", fill: true, tension: 0.3, yAxisID: "y"
+  }];
+  Object.keys(levelKeys).forEach(function (lv) {
+    datasets.push({
+      label: lv + "级覆盖率",
+      data: td.series.map(function (s) {
+        var b = (s.by_level || []).filter(function (x) { return x.heat_level === lv; })[0];
+        return b ? b.avg_coverage : null;
+      }),
+      borderColor: colors[lv] || "#64748b", backgroundColor: "transparent",
+      tension: 0.3, borderDash: lv === "S" ? [6, 4] : undefined
+    });
+  });
+  var ctx = cv.getContext("2d");
+  if (window._qualityChart) { try { window._qualityChart.destroy(); } catch (e) {} }
+  window._qualityChart = new Chart(ctx, {
+    type: "line",
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: function (c) { return c.dataset.label + ": " + (c.parsed.y == null ? "-" : c.parsed.y + "%"); } } }
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: function (v) { return v + "%"; } }, title: { display: true, text: "覆盖率" } },
+        x: { ticks: { maxRotation: 45, minRotation: 0 } }
+      }
+    }
+  });
+}
+
+window.YC_openCompletion = function (artistId) {
+  showModal("引导式补全 #" + artistId, "<p style='text-align:center;color:#888'>正在加载字段...</p>");
+  safeApi("GET", "/admin/quality/artist/" + artistId).then(function (res) {
+    if (!res.ok) { showModal("引导式补全", "<p style='color:#e74c3c'>加载失败: " + esc(res.error) + "</p>"); return; }
+    var d = res.data;
+    var html = "<p style='margin:0 0 12px;color:#475569'>艺人 <strong>" + esc(d.name || "?") + "</strong>（" + esc(d.heat_level || "-") + "级）· 缺失 <strong style='color:#dc2626'>" + d.missing_count + "</strong> / " + d.total + " 个字段（带 <span style='color:#dc2626'>*</span> 为待补全）</p>";
+    html += "<div style='max-height:50vh;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px'>";
+    (d.fields || []).forEach(function (f) {
+      var isNum = f.numeric;
+      var cls = f.missing ? "border:1px solid #fca5a5;background:#fff7f7" : "border:1px solid #e2e8f0";
+      html += "<div style='display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9'>";
+      html += "<label style='width:110px;font-size:13px;color:#475569'>" + esc(f.label) + (f.missing ? " <span style='color:#dc2626'>*</span>" : "") + "</label>";
+      html += "<input type='" + (isNum ? "number" : "text") + "' data-key='" + escAttr(f.key) + "' value='" + escAttr(f.value || "") + "' style='flex:1;padding:7px 9px;border-radius:6px;" + cls + "' placeholder='" + (f.missing ? "待补全" : "") + "' />";
+      html += "</div>";
+    });
+    html += "</div>";
+    showModal("引导式补全 · " + esc(d.name || ("#" + artistId)), html,
+      "<button type='button' class='btn btn-ghost btn-sm' onclick=\"document.getElementById('modal-layer').hidden=true\">取消</button> " +
+      "<button type='button' class='btn btn-primary btn-sm' onclick='YC_saveCompletion(" + artistId + ")'>保存补全</button>");
+  });
+};
+
+window.YC_saveCompletion = async function (artistId) {
+  var layer = $("modal-layer"); if (!layer) return;
+  var inputs = layer.querySelectorAll("input[data-key]");
+  var payload = {};
+  inputs.forEach(function (inp) { payload[inp.dataset.key] = inp.value; });
+  var res = await safeApi("PUT", "/admin/quality/artist/" + artistId, payload);
+  if (res.ok) {
+    toast("已保存补全（更新 " + (res.data.changed || 0) + " 个字段）");
+    layer.hidden = true;
+    renderQuality();
+  } else {
+    toast("保存失败: " + (res.error || "-"));
+  }
+};
+
+window.YC_recordSnapshot = async function () {
+  var res = await safeApi("POST", "/admin/quality/snapshot");
+  if (res.ok) { toast("已记录 " + res.data.snap_date + " 快照，整体覆盖 " + res.data.overall_coverage + "%"); renderQuality(); }
+  else { toast("记录失败: " + (res.error || "-")); }
+};
 
 function buildConfigForm(cfg){
   var keys=Object.keys(cfg).sort(); if(keys.length===0)return "<p style='color:#888;padding:16px'>\u6682\u65e0\u914d\u7f6e\u9879\u3002\u70b9\u51fb\u4fdd\u5b58\u53ef\u521d\u59cb\u5316\u914d\u7f6e\u3002</p>";
@@ -882,8 +987,9 @@ if(token){
   }).catch(function(){logout("\u670d\u52a1\u5668\u8fde\u63a5\u5931\u8d25\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55");});
 }
 
-/* 数据质检刷新按钮 */
+/* 数据质检刷新按钮 + 趋势快照按钮 */
 var qrb=$("quality-refresh-btn"); if(qrb)qrb.addEventListener("click",function(){renderQuality();});
+var qsb=$("quality-snapshot-btn"); if(qsb)qsb.addEventListener("click",function(){window.YC_recordSnapshot();});
 
 /* ===== JS ERROR DISPLAY ===== */
 window.onerror=function(msg,src,line,col,err){
