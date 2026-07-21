@@ -64,6 +64,15 @@ body {
 .btn-ghost:hover { background: #f1f5f9; color: #334155; }
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 .btn-block { width: 100%; padding: 11px; font-size: 15px; }
+.btn-success { background: linear-gradient(135deg,#16a34a,#15803d); color: #fff; border-color: transparent; }
+.btn-success:hover:not(:disabled) { box-shadow: 0 4px 12px rgba(22,163,74,.35); transform: translateY(-1px); }
+.btn-success:disabled { opacity: .55; cursor: not-allowed; }
+.btn-warning { background: linear-gradient(135deg,#f59e0b,#d97706); color: #fff; border-color: transparent; }
+.btn-warning:hover:not(:disabled) { box-shadow: 0 4px 12px rgba(245,158,11,.35); transform: translateY(-1px); }
+.btn-warning:disabled { opacity: .55; cursor: not-allowed; }
+.btn-danger { background: linear-gradient(135deg,#dc2626,#b91c1c); color: #fff; border-color: transparent; }
+.btn-danger:hover:not(:disabled) { box-shadow: 0 4px 12px rgba(220,38,38,.35); transform: translateY(-1px); }
+.btn-danger:disabled { opacity: .55; cursor: not-allowed; }
 
 /* ===== APP LAYOUT ===== */
 #app-view {
