@@ -219,6 +219,38 @@ function copyToClipboard(text) {
 window.YC_copy=function(text){if(copyToClipboard(text)){toast("\u590d\u5236\u6210\u529f");}else{"\u590d\u5231\u5931\u8d25\uff0c\u8bf7\u624b\u52a8\u9009\u62e9";}};
 window.YC_navigate=navigate;
 
+/* ===== CSV EXPORT (client-side, BOM for Excel 中文) ===== */
+var _cache={artists:[],events:[],users:[],leads:[],intakes:[]};
+function YC_exportCSV(rows,filename,headers,fields){
+  if(!rows||!rows.length){toast("\u5f53\u524d\u6ca1\u6709\u53ef\u5bfc\u51fa\u7684\u6570\u636e");return;}
+  var lines=[headers.join(",")];
+  rows.forEach(function(r){
+    var cells=fields.map(function(f){
+      var v=(typeof f==="function")?f(r):(r[f]==null?"":r[f]);
+      v=String(v==null?"":v).replace(/\"/g,'""');
+      return '"'+v+'"';
+    });
+    lines.push(cells.join(","));
+  });
+  var csv="\uFEFF"+lines.join("\r\n");
+  var blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");a.href=url;a.download=filename+".csv";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast("\u5df2\u5bfc\u51fa "+rows.length+" \u6761");
+}
+var EXPORT_DEFS={
+  artists:{file:"\u827a\u4eba\u5217\u8868",headers:["ID","\u59d3\u540d","\u7b49\u7ea7","\u98ce\u9669\u5206","\u7ecf\u7eaa\u516c\u53f8","\u4ee3\u8868\u4f5c","\u7c89\u4e1d\u91cf","\u70ed\u5ea6\u503c"],fields:["id","name","heat_level","risk_score","agency","masterpieces","fan_count","heat_score"]},
+  events:{file:"\u98ce\u9669\u4e8b\u4ef6",headers:["ID","\u827a\u4eba","\u4e8b\u4ef6\u7c7b\u578b","\u98ce\u9669\u7b49\u7ea7","\u65e5\u671f","\u6458\u8981"],fields:["id","artist_name","event_type","risk_level","event_date","summary"]},
+  users:{file:"\u7528\u6237\u5217\u8868",headers:["ID","\u6635\u79f0","\u624b\u673a","\u516c\u53f8","\u5957\u9910","\u8ba4\u8bc1","\u72b6\u6001","\u6ce8\u518c\u65f6\u95f4"],fields:["id","nickname","phone","company","user_type","verified","is_active","created_at"]},
+  leads:{file:"\u5546\u52a1\u7ebf\u7d22",headers:["ID","\u516c\u53f8/\u8054\u7cfb\u4eba","\u8054\u7cfb\u65b9\u5f0f","\u9700\u6c42","\u72b6\u6001","\u8d1f\u8d23\u4eba","\u521b\u5efa\u65f6\u95f4"],fields:["id","company_name","contact_phone","requirements","status","assignee_name","created_at"]},
+  intakes:{file:"\u5165\u9a7b\u7533\u8bf7",headers:["ID","\u827a\u4eba\u540d","\u7533\u8bf7\u4eba","\u7c7b\u578b","\u72b6\u6001","\u63d0\u4ea4\u65f6\u95f4"],fields:["id","artist_name","applicant_name","intake_type","status","created_at"]}
+};
+window.YC_exportModule=function(key){
+  var d=EXPORT_DEFS[key];if(!d)return;
+  YC_exportCSV(_cache[key],d.file,d.headers,d.fields);
+};
+
 /* ============================================================
    RENDER: DASHBOARD (clickable cards)
    ============================================================ */
@@ -302,6 +334,7 @@ function renderArtists(p){
   safeApi("GET","/artists"+params).then(function(res){
     if(!res.ok){if(tbody)tbody.innerHTML=errorRow(res.error||"\u52a0\u8f7d\u5931\u8d25",6);return;}
     var items=res.data.items||res.data||[]; if(!Array.isArray(items))items=[];
+    _cache.artists=items;
 
     renderTable(tbody,items,function(row){
       return "<td>"+(row.id||"-")+"</td>"+
@@ -350,6 +383,7 @@ function renderEvents(p){
   safeApi("GET","/events?limit="+PAGE_SIZE+"&offset="+((_eventPage-1)*PAGE_SIZE)).then(function(res){
     if(!res.ok){if(tbody)tbody.innerHTML=errorRow(res.error||"\u52a0\u8f7d\u5931\u8d25",6);return;}
     var items=res.data.items||res.data||[]; if(!Array.isArray(items))items=[];
+    _cache.events=items;
 
     renderTable(tbody,items,function(row){
       var lvl=row.risk_level||row.heat_level||"C";
@@ -402,6 +436,7 @@ function renderUsers(p){
   safeApi("GET","/admin/users"+params).then(function(res){
     if(!res.ok){if(tbody)tbody.innerHTML=errorRow((res.status===401||res.status===403)?"\u6743\u9650\u4e0d\u8db3\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55":(res.error||"\u52a0\u8f7d\u5931\u8d25"),9);return;}
     var d=res.data; var items=d.items||[]; if(!Array.isArray(items))items=[];
+    _cache.users=items;
 
     renderTable(tbody,items,function(row){
       var isActive=row.is_active!==false;
@@ -504,6 +539,7 @@ function renderLeads(p){
   safeApi("GET","/admin/leads?page="+_leadPage+"&page_size="+PAGE_SIZE+(sf?"&status="+sf:"")).then(function(res){
     if(!res.ok){if(tbody)tbody.innerHTML=errorRow(res.error||"\u52a0\u8f7d\u5931\u8d25",8);return;}
     var d=res.data; var items=d.items||[]; if(!Array.isArray(items))items=[];
+    _cache.leads=items;
 
     renderTable(tbody,items,function(row){
       return "<td>"+(row.id||"-")+"</td>"+
@@ -589,6 +625,7 @@ function renderIntakes(p){
   safeApi("GET","/admin/intakes?page="+_intakePage+"&page_size="+PAGE_SIZE+(sf?"&status="+sf:"")).then(function(res){
     if(!res.ok){if(tbody)tbody.innerHTML=errorRow(res.error||"\u52a0\u8f7d\u5931\u8d25",7);return;}
     var d=res.data; var items=d.items||[]; if(!Array.isArray(items))items=[];
+    _cache.intakes=items;
 
     renderTable(tbody,items,function(row){
       var isPending=(row.status==="pending_review"||row.status==="pending");
@@ -619,7 +656,7 @@ window.YC_approveIntake=async function(intakeId){
 };
 
 window.YC_rejectIntake=async function(intakeId){
-  showModal("\u786e\u8ba4\u9a73\u56de","\p style='padding:16px;text-align:center;'><label>\u9a73\u56de\u539f\u56e0:</label><textarea id='reject-reason' rows='3' style='width:100%;margin-top:8px;padding:8px;border:1px solid #ddd;border-radius:6px'></textarea></p>",
+  showModal("\u786e\u8ba4\u9a73\u56de","<p style='padding:16px;text-align:center;'><label>\u9a73\u56de\u539f\u56e0:</label><textarea id='reject-reason' rows='3' style='width:100%;margin-top:8px;padding:8px;border:1px solid #ddd;border-radius:6px'></textarea></p>",
   "<button type='button' onclick='YC_doRejectIntake("+(intakeId||0)+")' class='btn btn-danger btn-sm'>\u786e\u8ba4\u9a73\u56de</button> "+
   "<button type='button' onclick=\"document.getElementById('modal-layer').hidden=true\" class='btn btn-ghost btn-sm'>\u53d6\u6d88</button>");
 };
@@ -755,6 +792,12 @@ window.YC_saveConfig=async function(e){
   if(res.ok){toast("\u914d\u7f6e\u4fdd\u5b58\u6210\u529f"); if(st)st.textContent="\u2705 \u5df2\u4fdd\u5b58";}
   else{toast("\u4fdd\u5b58\u5931\u8d25: "+(res.error||"-")); if(st)st.textContent="\u274C \u4fdd\u5b58\u5931\u8d25";}
 };
+
+/* ===== EXPORT BUTTONS ===== */
+["artists","events","users","leads","intakes"].forEach(function(k){
+  var b=$("export-"+k+"-btn");
+  if(b)b.addEventListener("click",function(){window.YC_exportModule(k);});
+});
 
 /* ===== INIT ===== */
 var av0=$("app-view"),lv0=$("login-view");
