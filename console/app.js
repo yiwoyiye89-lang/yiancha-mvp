@@ -113,11 +113,11 @@ if (uEl) uEl.addEventListener("keydown", function (e) { if (e.key === "Enter") {
 function navigate(page) {
   currentPage = page;
   document.querySelectorAll(".nav-item").forEach(function (el) { el.classList.toggle("active", el.dataset.page === page); });
-  var titles = { dashboard: "\u6570\u636e\u770b\u677f", artists: "\u827a\u4eba\u7ba1\u7406", events: "\u98ce\u9669\u4e8b\u4ef6", users: "\u7528\u6237\u7ba1\u7406", staff: "\u5458\u5de5\u7ba1\u7406", leads: "\u5546\u52a1\u7ebf\u7d22", intakes: "\u5165\u9a7b\u5ba1\u6838", invites: "\u9080\u8bf7\u7801", pricing: "\u64ae\u5408\u914d\u7f6e" };
+  var titles = { dashboard: "\u6570\u636e\u770b\u677f", artists: "\u827a\u4eba\u7ba1\u7406", events: "\u98ce\u9669\u4e8b\u4ef6", users: "\u7528\u6237\u7ba1\u7406", staff: "\u5458\u5de5\u7ba1\u7406", leads: "\u5546\u52a1\u7ebf\u7d22", intakes: "\u5165\u9a7b\u5ba1\u6838", invites: "\u9080\u8bf7\u7801", pricing: "\u64ae\u5408\u914d\u7f6e", quality: "\u6570\u636e\u8d28\u68c0" };
   var t = $("topbar-title"); if (t) t.textContent = titles[page] || page;
   document.querySelectorAll(".page").forEach(function (el) { el.hidden = true; });
   var pg = $("page-" + page); if (pg) pg.hidden = false;
-  var renders = { dashboard: renderDashboard, artists: renderArtists, events: renderEvents, users: renderUsers, staff: renderStaff, leads: renderLeads, intakes: renderIntakes, invites: renderInvites, pricing: renderPricing };
+  var renders = { dashboard: renderDashboard, artists: renderArtists, events: renderEvents, users: renderUsers, staff: renderStaff, leads: renderLeads, intakes: renderIntakes, invites: renderInvites, pricing: renderPricing, quality: renderQuality };
   if (renders[page]) renders[page]();
   var sb = $("sidebar"); if (sb) sb.classList.remove("open");
 }
@@ -771,6 +771,77 @@ function renderPricing(){
   });
 }
 
+function statCard(icon, val, label, note, iconCls) {
+  return "<div class='stat-card'><span class='stat-icon " + (iconCls || "icon-blue") + "'>" + icon + "</span>" +
+    "<div class='stat-value'>" + val + "</div>" +
+    "<div class='stat-label'>" + label + "</div>" +
+    "<div class='stat-note'>" + (note || "") + "</div></div>";
+}
+
+function covBar(c) {
+  var pct = Math.max(0, Math.min(100, c || 0));
+  var color = pct >= 80 ? "#16a34a" : (pct >= 50 ? "#f59e0b" : "#dc2626");
+  return "<div style='flex:1;background:#eef2f7;border-radius:6px;height:10px;overflow:hidden'>" +
+    "<div style='width:" + pct + "%;background:" + color + ";height:100%;border-radius:6px'></div></div>";
+}
+
+function renderQuality() {
+  var cardsEl = $("quality-cards"), fieldsEl = $("quality-fields"), levelEl = $("quality-by-level"), tbody = $("quality-tbody");
+  if (cardsEl) cardsEl.innerHTML = statCard("&#x231B;", "...", "加载中", "拉取覆盖度");
+  if (fieldsEl) fieldsEl.innerHTML = "<p>加载中...</p>";
+  if (levelEl) levelEl.innerHTML = "<p>加载中...</p>";
+  if (tbody) tbody.innerHTML = "<tr><td colspan='5' class='loading-row'>正在加载...</td></tr>";
+
+  api("/admin/quality/coverage").then(function (d) {
+    if (!d) return;
+    var total = d.total || 0;
+    if (cardsEl) {
+      cardsEl.innerHTML =
+        statCard("&#x1F465;", total, "艺人总数", "全库艺人", "icon-blue") +
+        statCard("&#x1F4CA;", (d.overall_coverage || 0) + "%", "平均字段覆盖率", "全部业务字段均值", "icon-green") +
+        statCard("&#x26A0;", d.need_fix || 0, "待补全艺人", "至少缺失 1 个字段", "icon-yellow") +
+        statCard("&#x1F4E6;", (d.by_level && d.by_level.length) || 0, "热度等级", "S/A/B/C 分层", "icon-purple");
+    }
+    if (fieldsEl) {
+      var rows = (d.fields || []).map(function (f) {
+        var c = f.coverage || 0;
+        return "<div style='display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9'>" +
+          "<div style='width:120px;color:#475569;font-size:13px'>" + esc(f.label) + "</div>" +
+          covBar(c) +
+          "<div style='width:130px;text-align:right;font-size:13px;color:" + (c >= 80 ? "#16a34a" : (c >= 50 ? "#f59e0b" : "#dc2626")) + "'>" + c + "% (" + (f.filled || 0) + "/" + total + ")</div>" +
+          "</div>";
+      }).join("");
+      fieldsEl.innerHTML = rows || "<p>无数据</p>";
+    }
+    if (levelEl) {
+      var lr = (d.by_level || []).map(function (b) {
+        var c = b.avg_coverage || 0;
+        return "<div style='display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9'>" +
+          "<div style='width:60px;font-weight:600'>" + esc(b.heat_level) + "级</div>" +
+          covBar(c) +
+          "<div style='width:140px;text-align:right;font-size:13px;color:" + (c >= 80 ? "#16a34a" : (c >= 50 ? "#f59e0b" : "#dc2626")) + "'>" + c + "% · " + (b.total || 0) + "位</div>" +
+          "</div>";
+      }).join("");
+      levelEl.innerHTML = lr || "<p>无数据</p>";
+    }
+    if (tbody) {
+      renderTable(tbody, (d.missing_top || []), function (row) {
+        return "<td>" + (row.id || "-") + "</td>" +
+          "<td><strong>" + esc(row.name || "-") + "</strong></td>" +
+          "<td>" + esc(row.heat_level || "-") + "</td>" +
+          "<td><span style='color:#dc2626;background:#fee2e2;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:600'>" + (row.missing || 0) + "</span></td>" +
+          "<td><button class='btn btn-ghost btn-sm' onclick='YC_showArtistDetail(" + (row.id || 0) + ")'>查看</button></td>";
+      }, 5, "暂无缺失较多的艺人");
+    }
+  }).catch(function (err) {
+    var msg = esc(err && err.message ? err.message : String(err));
+    if (cardsEl) cardsEl.innerHTML = statCard("&#x26D4;", "!", "加载失败", msg, "icon-red");
+    if (fieldsEl) fieldsEl.innerHTML = "<p class='error-text'>" + msg + "</p>";
+    if (levelEl) levelEl.innerHTML = "<p class='error-text'>" + msg + "</p>";
+    if (tbody) tbody.innerHTML = "<tr><td colspan='5' class='error-text'>" + msg + "</td></tr>";
+  });
+}
+
 function buildConfigForm(cfg){
   var keys=Object.keys(cfg).sort(); if(keys.length===0)return "<p style='color:#888;padding:16px'>\u6682\u65e0\u914d\u7f6e\u9879\u3002\u70b9\u51fb\u4fdd\u5b58\u53ef\u521d\u59cb\u5316\u914d\u7f6e\u3002</p>";
   var fields=""; keys.forEach(function(k){
@@ -810,6 +881,9 @@ if(token){
     else{logout("\u767b\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55");}
   }).catch(function(){logout("\u670d\u52a1\u5668\u8fde\u63a5\u5931\u8d25\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55");});
 }
+
+/* 数据质检刷新按钮 */
+var qrb=$("quality-refresh-btn"); if(qrb)qrb.addEventListener("click",function(){renderQuality();});
 
 /* ===== JS ERROR DISPLAY ===== */
 window.onerror=function(msg,src,line,col,err){
