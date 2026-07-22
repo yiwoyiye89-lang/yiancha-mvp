@@ -1685,9 +1685,9 @@ canvas { max-width: 100%; }
     <button class="btn btn-outline btn-sm nav-btn" onclick="App.openBrandMatch()" style="margin-right:6px;color:var(--value-s,#059669);border-color:var(--value-s,#059669);">
       <span style="font-size:16px;">🎯</span><span class="nav-label">品牌找艺人</span>
     </button>
-    <button class="btn btn-ghost btn-sm nav-btn" onclick="App.openAdminLogin()" style="margin-right:6px;">
-      <span style="font-size:16px;">⚙</span><span class="nav-label">管理</span>
-    </button>
+    <a class="btn btn-ghost btn-sm nav-btn" href="https://yiwoyiye89-lang.github.io/yiancha-mvp/console/" target="_blank" rel="noopener" style="margin-right:6px;text-decoration:none;">
+      <span style="font-size:16px;">⚙</span><span class="nav-label">管理后台</span>
+    </a>
     <div id="userArea"></div>
   </div>
 </nav>
@@ -1950,46 +1950,7 @@ canvas { max-width: 100%; }
   </div>
 </div>
 
-<!-- Admin Modal (login + leads) -->
-<div class="modal-overlay" id="adminModal" onclick="App.closeAdminModal()">
-  <div class="modal modal-lg" onclick="event.stopPropagation()">
-    <div class="modal-header">
-      <h3>管理后台</h3>
-      <button class="modal-close" onclick="App.closeAdminModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <div id="adminLoginBox">
-        <p class="text-sm text-secondary">请输入管理引导密钥以进入后台（商务线索 + 数据质检）。</p>
-        <div class="form-row">
-          <div class="form-group" style="flex:1;">
-            <input class="form-input" type="password" id="adminCode" placeholder="管理引导密钥">
-          </div>
-          <button class="btn btn-primary" type="button" onclick="App.submitAdminLogin()">进入</button>
-        </div>
-        <div id="adminLoginMsg" style="font-size:13px; margin-top:6px;"></div>
-      </div>
-      <div id="adminLeadsBox" style="display:none;">
-        <div class="admin-tabs">
-          <button class="admin-tab active" id="tabLeads" onclick="App.switchAdminTab('leads')">💼 商务线索</button>
-          <button class="admin-tab" id="tabDQ" onclick="App.switchAdminTab('dq')">📊 数据质检</button>
-        </div>
-        <div id="adminLeadsPanel">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin:10px 0;">
-            <span class="text-secondary text-sm" id="adminLeadsMeta"></span>
-            <button class="btn btn-ghost btn-xs" type="button" onclick="App.renderAdminLeads()">刷新</button>
-          </div>
-          <div id="adminLeadsList" style="max-height:52vh; overflow:auto;"></div>
-        </div>
-        <div id="adminDQPanel" style="display:none;">
-          <div id="adminDQSummary" class="dq-summary"></div>
-          <div id="adminDQFill" class="dq-fill"></div>
-          <div id="adminDQEmptyMeta" class="text-secondary text-sm" style="margin:12px 0 6px;"></div>
-          <div id="adminDQEmptyList" style="max-height:46vh; overflow:auto;"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- 管理后台已迁移至独立 Console：https://yiwoyiye89-lang.github.io/yiancha-mvp/console/ -->
 
 <!-- P0-2 双盲定价 Modal -->
 <div class="modal-overlay" id="pricingModal" onclick="App.closePricing()">
