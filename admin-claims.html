@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>艺安查 · 艺人认领审核</title>
+<style>
+  :root { --primary:#4F46E5; --primary-dark:#4338CA; --bg:#F8FAFC; --card:#fff; --border:#E2E8F0; --text:#0F172A; --text-2:#475569; --text-3:#94A3B8; --risk-high:#EF4444; --risk-mid:#F59E0B; --risk-safe:#10B981; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:1080px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-size:24px; font-weight:800; letter-spacing:-.5px; margin:0 0 4px; }
+  .sub { color:var(--text-2); font-size:14px; margin-bottom:24px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(15,23,42,.04); }
+  .card-head { font-weight:700; font-size:15px; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+  .btn { border:none; border-radius:10px; padding:9px 16px; font-size:14px; font-weight:600; cursor:pointer; }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-outline { background:#fff; border:1px solid var(--border); color:var(--text); }
+  .btn-ghost { background:#F1F5F9; color:var(--text); }
+  .btn-sm { padding:6px 12px; font-size:13px; }
+  .btn-danger { background:var(--risk-high); color:#fff; }
+  .btn-success { background:var(--risk-safe); color:#fff; }
+  .form-input { border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:14px; width:100%; }
+  .flex { display:flex; } .gap-2 { gap:8px; } .items-center { align-items:center; } .justify-between { justify-content:space-between; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+  .tag { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; background:#EEF2FF; color:#4338CA; }
+  .tag-risk-high { background:#FEE2E2; color:#B91C1C; }
+  .tag-risk-mid { background:#FEF3C7; color:#B45309; }
+  .tag-risk-safe { background:#D1FAE5; color:#047857; }
+  .claim { border:1px solid var(--border); border-radius:12px; padding:14px 16px; background:#fff; }
+  .claim + .claim { margin-top:12px; }
+  .muted { color:var(--text-3); font-size:12px; }
+  .tabs { display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; }
+  .tab { padding:7px 14px; border-radius:999px; background:#fff; border:1px solid var(--border); font-size:13px; cursor:pointer; color:var(--text-2); }
+  .tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .login-box { max-width:380px; margin:60px auto; }
+  .err { color:var(--risk-high); font-size:13px; margin-top:8px; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#0F172A; color:#fff; padding:10px 18px; border-radius:10px; font-size:14px; opacity:0; transition:.2s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:#F1F5F9; color:var(--text-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔗 艺人认领审核</h1>
+  <div class="sub">艺安查后台 · 供给侧确权与多管理方审核（staff 登录）</div>
+  <div id="app"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = 'https://yiancha-backend.onrender.com/api/v1';
+const TYPE_LABEL = { owner:'本人主页', manager:'经纪管理', mcn:'MCN 管理', agency:'代理管理' };
+let curStatus = 'pending';
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+async function api(path, opts = {}) {
+  const token = localStorage.getItem('staffToken');
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const r = await fetch(API + path, { ...opts, headers });
+  if (r.status === 401) { localStorage.removeItem('staffToken'); renderLogin(); throw new Error('登录已失效，请重新登录'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+  return j;
+}
+function statusBadge(s) {
+  if (s === 'approved') return '<span class="tag tag-risk-safe">已通过</span>';
+  if (s === 'pending') return '<span class="tag tag-risk-mid">审核中</span>';
+  return '<span class="tag tag-risk-high">已驳回</span>';
+}
+function renderLogin() {
+  document.getElementById('app').innerHTML = `
+    <div class="card login-box">
+      <div class="card-head">员工登录</div>
+      <input class="form-input" id="su" placeholder="员工账号" style="margin-bottom:10px;">
+      <input class="form-input" id="sp" type="password" placeholder="密码" style="margin-bottom:14px;" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="btn btn-primary" style="width:100%;" onclick="doLogin()">登录</button>
+      <div class="err" id="loginErr"></div>
+    </div>`;
+}
+async function doLogin() {
+  const username = document.getElementById('su').value.trim();
+  const password = document.getElementById('sp').value;
+  try {
+    const d = await api('/admin/auth/login', { method:'POST', body: JSON.stringify({ username, password }) });
+    localStorage.setItem('staffToken', d.token);
+    renderConsole();
+  } catch (e) {
+    document.getElementById('loginErr').textContent = e.message;
+  }
+}
+function logout() { localStorage.removeItem('staffToken'); renderLogin(); }
+
+function renderConsole() {
+  document.getElementById('app').innerHTML = `
+    <div class="flex justify-between items-center" style="margin-bottom:8px;">
+      <div class="tabs" id="statusTabs">
+        <span class="tab active" data-s="pending" onclick="App_setStatus('pending')">待审核</span>
+        <span class="tab" data-s="approved" onclick="App_setStatus('approved')">已通过</span>
+        <span class="tab" data-s="rejected" onclick="App_setStatus('rejected')">已驳回</span>
+        <span class="tab" data-s="all" onclick="App_setStatus('all')">全部</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">退出</button>
+    </div>
+    <div id="claimList"><div class="muted">加载中...</div></div>`;
+  loadClaims();
+}
+function App_setStatus(s) {
+  curStatus = s;
+  document.querySelectorAll('#statusTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.s === s));
+  loadClaims();
+}
+async function loadClaims() {
+  const box = document.getElementById('claimList');
+  box.innerHTML = '<div class="muted">加载中...</div>';
+  try {
+    const d = await api('/admin/artist-claims?status=' + curStatus);
+    const items = d.items || [];
+    if (!items.length) { box.innerHTML = '<div class="muted" style="padding:24px 0;">暂无该状态的认领申请</div>'; return; }
+    box.innerHTML = items.map(c => `
+      <div class="claim">
+        <div class="flex justify-between items-center">
+          <div><b style="font-size:15px;">${c.artist_name || ('艺人#' + c.artist_id)}</b>
+            <span class="tag" style="margin-left:6px;">${TYPE_LABEL[c.claim_type] || c.claim_type}</span>
+            ${statusBadge(c.status)}
+          </div>
+          <div class="muted">#${c.id} · ${c.created_at || ''}</div>
+        </div>
+        <div class="muted" style="margin-top:6px;">
+          申请人尾号 ${c.user_phone_tail || '****'} ${c.user_company ? ' · ' + c.user_company : ''}
+          ${c.note ? ' · 备注：' + c.note : ''}
+        </div>
+        ${c.reject_reason ? `<div class="muted" style="margin-top:4px;color:var(--risk-high);">驳回原因：${c.reject_reason}</div>` : ''}
+        ${c.status === 'pending' ? `
+          <div class="flex gap-2" style="margin-top:12px;">
+            <button class="btn btn-success btn-sm" onclick="App_review(${c.id},'approve')">通过</button>
+            <button class="btn btn-danger btn-sm" onclick="App_review(${c.id},'reject')">驳回</button>
+          </div>` : ''}
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="err">加载失败：' + e.message + '</div>';
+  }
+}
+async function App_review(id, action) {
+  let reason = null;
+  if (action === 'reject') {
+    reason = prompt('驳回原因（可选）：') || '未通过审核';
+  }
+  try {
+    await api('/admin/artist-claims/' + id + '/review', { method:'POST', body: JSON.stringify({ action, reject_reason: reason }) });
+    toast(action === 'approve' ? '已通过' : '已驳回');
+    loadClaims();
+  } catch (e) {
+    toast('操作失败：' + e.message);
+  }
+}
+
+// 启动
+if (localStorage.getItem('staffToken')) renderConsole(); else renderLogin();
+</script>
+</body>
+</html>
