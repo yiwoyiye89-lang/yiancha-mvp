@@ -239,6 +239,7 @@ const App = {
       if (r === 'home') active = (cur === 'home' || cur.startsWith('artist') || cur.startsWith('graph'));
       else if (r === 'aff') active = (cur.startsWith('aff') || cur.startsWith('seeding'));
       else if (r === 'seeding') active = cur.startsWith('seeding');
+      else if (r === 'sop') active = cur.startsWith('sop');
       else if (r === 'monitoring') active = cur === 'monitoring';
       else if (r === 'workbench') active = cur === 'workbench';
       el.classList.toggle('active', active);
@@ -262,6 +263,8 @@ const App = {
       this.renderAffSearchPage(container);
     } else if (hash === 'seeding') {
       this.renderSeedingPage(container);
+    } else if (hash === 'sop') {
+      this.renderSopPage(container);
     } else {
       this.renderHomePage(container);
     }
@@ -2664,13 +2667,25 @@ const App = {
             <input type="text" id="affSearchInput" placeholder="输入艺人姓名，如 周深 / 左航 / 卓沅" onkeydown="if(event.key==='Enter')App.runAffSearch()">
             <button class="search-btn" onclick="App.runAffSearch()">检索</button>
           </div>
+          <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:12px;color:var(--text-tertiary);">标签：</span>
+            <button class="tag" style="cursor:pointer;border:none;${this.state.affTag ? 'background:#EEF2FF;color:#4338CA;' : 'background:#0369A1;color:#fff;'}" onclick="App.setAffTag('')">全部</button>
+            ${['选秀', '带货型', '有宝宝', '演员-男', '演员-女', '综艺-男', '歌手-男', '歌手-女'].map(t => `<button class="tag" style="cursor:pointer;border:none;${this.state.affTag === t ? 'background:#0369A1;color:#fff;' : 'background:#EEF2FF;color:#4338CA;'}" onclick="App.setAffTag('${t}')">${t}</button>`).join('')}
+          </div>
           <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-ghost btn-sm" onclick="App.runAffSearch('')">显示全部 AFF 覆盖艺人</button>
             <button class="btn btn-ghost btn-sm" onclick="App.navigate('seeding')" style="color:#047857;border-color:#047857;">🌱 前往潜力 Seeding 艺人榜</button>
+            <button class="btn btn-ghost btn-sm" onclick="App.navigate('sop')" style="color:#7C3AED;border-color:#7C3AED;">📚 粉丝运营 SOP</button>
           </div>
         </div>
       </div>
       <div id="affResults"></div>`;
+  },
+
+  setAffTag(t) {
+    this.state.affTag = t;
+    this.renderAffSearchPage(document.getElementById('view') || document.body);
+    this.runAffSearch();
   },
 
   async runAffSearch(name) {
@@ -2680,13 +2695,16 @@ const App = {
     if (!box) return;
     box.innerHTML = `<div style="text-align:center;padding:20px;"><div class="spinner"></div></div>`;
     try {
-      const d = await this.api('/aff/search?limit=80' + (q ? '&name=' + encodeURIComponent(q) : ''));
+      let url = '/aff/search?limit=80';
+      if (q) url += '&name=' + encodeURIComponent(q);
+      if (this.state.affTag) url += '&tag=' + encodeURIComponent(this.state.affTag);
+      const d = await this.api(url);
       const items = d.items || [];
       if (!items.length) {
         box.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:30px;">未找到匹配的 AFF 覆盖艺人</div>';
         return;
       }
-      box.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">共 ${d.total} 位 AFF 覆盖艺人</div>
+      box.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">共 ${d.total} 位 AFF 覆盖艺人${this.state.affTag ? '（标签：' + this.state.affTag + '）' : ''}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
           ${items.map(x => `
             <div class="card" style="padding:14px;cursor:pointer;border:1px solid var(--border,#E5E7EB);" onclick="App.navigate('artist/${x.artist_id}')">
@@ -2699,7 +2717,9 @@ const App = {
                 ${x.kol_total != null ? `<span>📡 粉丝站 <b>${x.kol_total}</b></span>` : ''}
                 ${x.family ? `<span>💑 ${x.family}</span>` : ''}
                 ${x.has_extra ? '<span>📊 扩展画像</span>' : ''}
+                ${x.livestream_power != null ? `<span style="color:#92400E;">🛒 带货力 <b>${x.livestream_power}</b></span>` : ''}
               </div>
+              ${x.tags && x.tags.length ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">` + x.tags.slice(0,4).map(t => `<span class="tag" style="font-size:10px;background:#EEF2FF;color:#4338CA;">${this.esc(t)}</span>`).join('') + `</div>` : ''}
             </div>`).join('')}
         </div>`;
     } catch (e) {
@@ -2764,6 +2784,63 @@ const App = {
     }
   },
 
+  // ==================== 粉丝运营 SOP 知识库（独立入口 #sop）====================
+  renderSopPage(container) {
+    container.innerHTML = `
+      <div class="card mb-6">
+        <div class="card-body">
+          <h2 style="font-size:20px;font-weight:700;margin-bottom:4px;">📚 粉丝运营 SOP 知识库</h2>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">AFF 方法论 / 结项报告 / 电商玩法沉淀的可检索运营模板。品牌方与经纪人可按模块、标签或关键词对标，提升粉丝运营效率与商业转化。</p>
+          <div class="search-box" style="max-width:480px;">
+            <input type="text" id="sopSearch" placeholder="搜索 SOP，如 直播 / 反黑 / 应援" onkeydown="if(event.key==='Enter')App.runSopSearch()">
+            <button class="search-btn" onclick="App.runSopSearch()">搜索</button>
+          </div>
+          <div id="sopFilters" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;"></div>
+        </div>
+      </div>
+      <div id="sopResults"></div>`;
+    this.runSopSearch();
+  },
+
+  async runSopSearch(q, category) {
+    q = (q !== undefined) ? q : (document.getElementById('sopSearch') ? document.getElementById('sopSearch').value.trim() : '');
+    const box = document.getElementById('sopResults');
+    if (!box) return;
+    box.innerHTML = `<div style="text-align:center;padding:20px;"><div class="spinner"></div></div>`;
+    try {
+      let url = '/aff/sop?limit=50';
+      if (q) url += '&q=' + encodeURIComponent(q);
+      if (category) url += '&category=' + encodeURIComponent(category);
+      const d = await this.api(url);
+      const fbox = document.getElementById('sopFilters');
+      if (fbox && !q) {
+        const cats = (d.category_distribution || []).filter(c => c.count > 0);
+        fbox.innerHTML = `<span style="font-size:12px;color:var(--text-tertiary);margin-right:4px;">模块：</span>` +
+          `<button class="tag" style="cursor:pointer;border:none;background:#7C3AED;color:#fff;" onclick="App.runSopSearch('','')">全部</button> ` +
+          cats.map(c => `<button class="tag" style="cursor:pointer;border:none;background:#F3E8FF;color:#7C3AED;" onclick="App.runSopSearch('','${this.esc(c.category)}')">${this.esc(c.category)} ${c.count}</button>`).join(' ');
+      }
+      const items = d.items || [];
+      if (!items.length) { box.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:30px;">无匹配 SOP</div>'; return; }
+      box.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">共 ${d.total} 条</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;">
+        ${items.map(x => `
+          <div class="card" style="padding:14px;border:1px solid var(--border,#E5E7EB);">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+              <div style="font-weight:700;font-size:15px;">${this.esc(x.title)}</div>
+              <span class="tag" style="font-size:10px;background:#F3E8FF;color:#7C3AED;white-space:nowrap;">${this.esc(x.category)}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-top:8px;max-height:150px;overflow:auto;">${this.esc(x.content)}</div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;">
+              ${(x.tags || []).map(t => `<span class="tag" style="font-size:10px;background:#EEF2FF;color:#4338CA;">${this.esc(t)}</span>`).join('')}
+            </div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">适用：${this.esc(x.audience_target || '-')} · 来源 ${this.esc(x.source || '')}</div>
+          </div>`).join('')}
+        </div>`;
+    } catch (e) {
+      box.innerHTML = '<div style="color:var(--text-tertiary);font-size:12px;">加载失败</div>';
+    }
+  },
+
   // ==================== AFF 粉丝力三维度（公开端点 /aff/profile/{id}）====================
   fmtInt(n) {
     if (n === null || n === undefined || n === '') return '-';
@@ -2799,9 +2876,11 @@ const App = {
     const el = document.getElementById('tab-kol');
     if (!el) return;
     el.innerHTML = `<div class="text-center" style="padding:40px;"><div class="spinner"></div></div>`;
-    // 新：逐站子明细（P0 入库）
-    let det = null;
+    // 新：逐站子明细（P0 入库）+ 标签 + 带货力（P1）
+    let det = null, tags = [], live = null;
     try { det = await this.api('/aff/kol-details/' + id); } catch (e) { det = null; }
+    try { const t = await this.api('/aff/tags/' + id); tags = (t && t.tags) || []; } catch (e) {}
+    try { live = await this.api('/aff/livestream/' + id); } catch (e) { live = null; }
     // 旧：聚合矩阵
     const d = await this._loadAff(id);
     let html = '';
@@ -2824,9 +2903,18 @@ const App = {
         <td style="text-align:right;">${this.fmtInt(x.fans)}</td>
         <td style="color:var(--text-secondary);">${this.esc(x.category || '-')}</td>
       </tr>`).join('');
+      const tagChips = tags.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">` +
+        tags.map(t => `<span class="tag" style="font-size:11px;background:#EEF2FF;color:#4338CA;">${this.esc(t.tag)}</span>`).join('') + `</div>` : '';
+      const radarRows = (h.radar || []).map(r => `
+        <div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;">
+          <div style="width:64px;color:var(--text-secondary);">${r.label}</div>
+          <div style="flex:1;background:#F3F4F6;border-radius:6px;height:12px;overflow:hidden;"><div style="width:${r.value}%;background:#0369A1;height:100%;"></div></div>
+          <div style="width:32px;text-align:right;color:var(--text-secondary);">${r.value}</div>
+        </div>`).join('');
       html += `
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header">🔥 粉丝力健康度 <span class="tag" style="background:#F0F9FF;color:#0369A1;">AFF 站子明细</span></div>
+        ${tagChips}
         <div class="card-body">
           <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;">
             <div style="text-align:center;">
@@ -2841,9 +2929,35 @@ const App = {
           </div>
           <div style="margin-top:14px;font-size:13px;font-weight:600;color:var(--text-secondary);">平台粉丝分布</div>
           <div style="margin-top:6px;">${bars}</div>
+          <div style="margin-top:14px;font-size:13px;font-weight:600;color:var(--text-secondary);">健康度指标（五维）</div>
+          <div style="margin-top:6px;">${radarRows}</div>
           <div style="margin-top:6px;font-size:11px;color:var(--text-tertiary);">${this.esc(h.desc || '')}</div>
         </div>
-      </div>
+      </div>`;
+      // 带货 / 电商能力卡（P1：livestream_commerce）
+      if (live) {
+        const lp = live.livestream_power != null ? live.livestream_power : '-';
+        const lpColor = lp >= 60 ? '#059669' : lp >= 40 ? '#D97706' : '#0369A1';
+        const cats = (live.category_fit || []).map(c => `<span class="tag" style="font-size:10px;background:#FEF3C7;color:#92400E;">${this.esc(c)}</span>`).join(' ');
+        const metrics = [
+          ['预估 GMV', live.gmv_range || (live.gmv_est != null ? live.gmv_est + '万' : '待补')],
+          ['场均观看', live.avg_viewers != null ? this.fmtInt(live.avg_viewers) : '待补'],
+          ['客单价', live.aov_wan != null ? live.aov_wan + '万' : '待补'],
+          ['转化率', live.conversion_rate != null ? live.conversion_rate + '%' : '待补'],
+        ].map(([k, v]) => `<div style="flex:1;min-width:90px;"><div style="font-size:15px;font-weight:800;">${v}</div><div class="text-tertiary text-xs">${k}</div></div>`).join('');
+        html += `
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">🛒 带货 / 电商能力 <span class="tag" style="background:#F0F9FF;color:#0369A1;">AFF 带货分析</span>
+            <span style="float:right;font-size:12px;color:${lpColor};font-weight:700;">带货力 ${lp}</span></div>
+          <div class="card-body">
+            <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;">${metrics}</div>
+            <div style="margin-bottom:8px;">${cats || '<span class="text-tertiary text-xs">适配品类待补</span>'}</div>
+            ${live.cases ? `<div style="font-size:12px;color:var(--text-secondary);line-height:1.6;max-height:160px;overflow:auto;background:var(--gray-50,#F9FAFB);padding:10px;border-radius:8px;">${this.esc(live.cases).slice(0, 600)}</div>` : ''}
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">数据置信度 ${Math.round((live.confidence || 0) * 100)}% · 来源 ${this.esc(live.source || '')} · 已并入 GCV 转化力维度</div>
+          </div>
+        </div>`;
+      }
+      html += `
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header">🏆 核心粉丝站 Top 10 <button class="btn btn-ghost btn-sm" style="float:right;font-size:11px;padding:2px 10px;" onclick="App.showKolDetailModal(${id})">查看全部 ${det.total_stations} 个站子 →</button></div>
         <div class="card-body"><div class="table-responsive"><table class="data-table">
