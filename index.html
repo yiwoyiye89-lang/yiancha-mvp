@@ -315,6 +315,17 @@ body {
   cursor: pointer; 
 }
 
+/* 导航激活态：当前所在模块高亮，提升导航可读性 */
+.top-nav .nav-btn.active,
+.top-nav .nav-btn.active:hover {
+  background: #EFF6FF;
+  color: #2563EB;
+  border-color: #2563EB;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+.top-nav .nav-btn.active span[class] { color: inherit; }
+.top-nav .logo:active .logo-icon { transform: scale(0.94); }
+
 .top-nav .user-area .plan-tag { 
   background: linear-gradient(135deg, var(--primary-50), var(--primary-100));
   color: var(--primary); 
@@ -1668,7 +1679,7 @@ canvas { max-width: 100%; }
 
 <!-- Top Navigation -->
 <nav class="top-nav">
-  <a class="logo" onclick="App.navigate('home')">
+  <a class="logo" onclick="App.goHome()" title="回到首页">
     <div class="logo-icon">YC</div>
     <span class="logo-text">艺安查</span>
   </a>
@@ -1676,7 +1687,10 @@ canvas { max-width: 100%; }
     <input type="text" id="navSearch" placeholder="搜索艺人、经纪公司、代表作..." onkeydown="if(event.key==='Enter'){App.navigate('home');document.getElementById('heroSearch').value=this.value;App.doSearch();}">
   </div>
   <div class="nav-right">
-    <button class="btn btn-ghost btn-sm nav-btn" onclick="App.navigate('monitoring')" style="margin-right:6px;">
+    <button class="btn btn-ghost btn-sm nav-btn" data-route="home" onclick="App.goHome()" style="margin-right:6px;">
+      <span style="font-size:16px;">🏠</span><span class="nav-label">首页</span>
+    </button>
+    <button class="btn btn-ghost btn-sm nav-btn" data-route="monitoring" onclick="App.navigate('monitoring')" style="margin-right:6px;">
       <span style="font-size:16px;">🔔</span><span class="nav-label">监控告警</span>
     </button>
     <button class="btn btn-ghost btn-sm nav-btn" onclick="App.openBusinessModal()" style="margin-right:6px;">
@@ -1685,7 +1699,7 @@ canvas { max-width: 100%; }
     <button class="btn btn-outline btn-sm nav-btn" onclick="App.openBrandMatch()" style="margin-right:6px;color:var(--value-s,#059669);border-color:var(--value-s,#059669);">
       <span style="font-size:16px;">🎯</span><span class="nav-label">品牌找艺人</span>
     </button>
-    <button class="btn btn-ghost btn-sm nav-btn" onclick="App.navigate('aff')" style="margin-right:6px;color:#0369A1;">
+    <button class="btn btn-ghost btn-sm nav-btn" data-route="aff" onclick="App.navigate('aff')" style="margin-right:6px;color:#0369A1;">
       <span style="font-size:16px;">📡</span><span class="nav-label">AFF 粉丝力</span>
     </button>
     <a class="btn btn-ghost btn-sm nav-btn" href="https://yiwoyiye89-lang.github.io/yiancha-mvp/console/" target="_blank" rel="noopener" style="margin-right:6px;text-decoration:none;">
