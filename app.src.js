@@ -209,11 +209,39 @@ const App = {
 
   // ---- Navigation ----
   navigate(page, params) {
-    if (params) {
-      window.location.hash = `${page}/${params}`;
+    const target = params ? `${page}/${params}` : page;
+    const cur = window.location.hash.slice(1) || 'home';
+    if (target === cur) {
+      // 同页导航：强制重渲染（修复「logo 已在首页时点击无反应」的体验问题）
+      this.route();
     } else {
-      window.location.hash = page;
+      window.location.hash = target;
     }
+  },
+
+  // 回到首页（logo / 品牌区点击）：已在首页则平滑滚动到顶部，否则导航回首页
+  goHome() {
+    const cur = window.location.hash.slice(1) || 'home';
+    if (cur === 'home') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      this.navigate('home');
+    }
+  },
+
+  // 顶部导航激活态：根据当前路由高亮对应入口，提升导航可读性
+  updateNavState() {
+    const cur = window.location.hash.slice(1) || 'home';
+    const els = document.querySelectorAll('.top-nav [data-route]');
+    els.forEach((el) => {
+      const r = el.getAttribute('data-route');
+      let active = false;
+      if (r === 'home') active = (cur === 'home' || cur.startsWith('artist') || cur.startsWith('graph'));
+      else if (r === 'aff') active = cur.startsWith('aff');
+      else if (r === 'monitoring') active = cur === 'monitoring';
+      else if (r === 'workbench') active = cur === 'workbench';
+      el.classList.toggle('active', active);
+    });
   },
 
   route() {
@@ -234,6 +262,7 @@ const App = {
     } else {
       this.renderHomePage(container);
     }
+    this.updateNavState();
     window.scrollTo(0, 0);
   },
 
@@ -1825,7 +1854,7 @@ const App = {
       <!-- Hero -->
       <div class="hero-section">
         <div class="hero-inner animate-in">
-          <div class="hero-logo">
+          <div class="hero-logo" onclick="App.goHome()" title="回到首页" style="cursor:pointer;">
             <div class="hero-logo-icon"><span>YC</span></div>
             <span>艺安查</span>
           </div>
