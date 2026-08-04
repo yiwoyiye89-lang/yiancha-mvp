@@ -3,7 +3,7 @@
    ============================================ */
 
 // === 当前前端版本号（Task #3: 与 version.json 比对，发现新版本弹刷新提示） ===
-const APP_VERSION = '2.10.0';
+const APP_VERSION = '2.10.3';
 
 // === 内置10人示例数据（离线兜底，API不可用时即时体验） ===
 const OFFLINE_DEMO_DATA = [
