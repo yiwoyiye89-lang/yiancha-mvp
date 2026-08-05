@@ -3,7 +3,7 @@
    ============================================ */
 
 // === 当前前端版本号（Task #3: 与 version.json 比对，发现新版本弹刷新提示） ===
-const APP_VERSION = '2.10.3';
+const APP_VERSION = '2.11.0';
 
 // === 内置10人示例数据（离线兜底，API不可用时即时体验） ===
 const OFFLINE_DEMO_DATA = [
@@ -1581,6 +1581,126 @@ const App = {
     localStorage.setItem('yc_daily_views', String(this.state.dailyViews));
   },
 
+  // ---- 数据分级（Phase 1 地基）：当前用户数据层级 + 付费墙 ----
+  // 当前用户可见数据层级上限：匿名 L0 / 免费 L1 / 会员+专业 L2 / 企业 L3
+  dataLevel() {
+    const u = this.state.user;
+    if (!u) return 0;
+    const plan = (u.plan_name || '免费版');
+    if (plan === '免费版') return 1;
+    if (plan === '专业版' || plan === '企业版') return 2;
+    // C 端会员（个人从业者）映射 L2
+    if (plan === '会员版' || u.user_type === 'personal' || u.user_type === 'professional') return 2;
+    if (u.user_type === 'enterprise') return 3;
+    return 1;
+  },
+
+  // 拉取后端数据分级元数据（付费墙/锁层渲染用），缓存于 state.tierMeta
+  async ensureTierMeta() {
+    if (this.state.tierMeta) return this.state.tierMeta;
+    try {
+      const d = await this.api('/tiers/meta');
+      this.state.tierMeta = d || null;
+    } catch (e) {
+      this.state.tierMeta = null;
+    }
+    return this.state.tierMeta;
+  },
+
+  // 字段是否被当前层级遮蔽（后端已返回 MASKED 占位符，这里做前端兜底判断）
+  isMasked(v) {
+    return typeof v === 'string' && v.indexOf('***') === 0;
+  },
+
+  // 脱敏字段行内占位（小锁标）
+  maskedFieldHtml(label) {
+    return `<span class="tier-masked" title="该字段需更高数据层级"><span class="tier-lock">🔒</span>${this.escHtml(label)}</span>`;
+  },
+
+  // 某区块是否锁定（需 L2+）：返回布尔
+  sectionLocked(section) {
+    const L2_SECTIONS = ['risk_events', 'gcv_detail', 'sales_report', 'relation_graph', 'fan_ops_sop', 'whitelabel'];
+    if (!L2_SECTIONS.includes(section)) return false;
+    return this.dataLevel() < 2;
+  },
+
+  // 生成区块锁层 HTML（付费墙）
+  paywallHtml(section, title) {
+    const names = {
+      risk_events: '风险事件明细（含来源原文）',
+      gcv_detail: 'GCV 公式明细与置信度',
+      sales_report: '代言战报全量数据',
+      relation_graph: '艺人关系图谱',
+      fan_ops_sop: '粉丝运营 SOP 全库',
+      whitelabel: '白标 / 去水印报告导出',
+    };
+    const label = title || names[section] || '专业数据';
+    return `
+      <div class="paywall-card" data-section="${section}">
+        <div class="paywall-lock">🔒</div>
+        <div class="paywall-title">${this.escHtml(label)}</div>
+        <div class="paywall-desc">该数据为专业层（L2），仅向 B 端模块订阅用户与 C 端专业会员开放，避免高价值数据被免费榨取，同时满足饭圈治理合规边界。</div>
+        <div class="paywall-actions">
+          <button class="btn btn-primary" onclick="App.openUpgradeModal('${section}')">解锁查看</button>
+          <button class="btn btn-ghost" onclick="App.openSingleReport()">¥129 单份深度报告</button>
+        </div>
+      </div>`;
+  },
+
+  // 升级弹层（会员 / 专业 / 单份报告）
+  openUpgradeModal(section) {
+    const m = document.getElementById('upgradeModal');
+    if (!m) { this.openPaywallModalFallback(); return; }
+    // 填充区块说明
+    const secName = (m.querySelector('#upgradeSectionName'));
+    if (secName) secName.textContent = section ? '（' + this._sectionLabel(section) + '）' : '';
+    m.classList.add('show');
+  },
+  openSingleReport() {
+    const m = document.getElementById('upgradeModal');
+    if (!m) { this.openPaywallModalFallback(); return; }
+    const tab = m.querySelector('[data-upgrade-tab="single"]');
+    if (tab) { tab.click(); }
+    m.classList.add('show');
+  },
+  _sectionLabel(section) {
+    const names = {
+      risk_events: '风险事件明细', gcv_detail: 'GCV 公式明细', sales_report: '代言战报',
+      relation_graph: '关系图谱', fan_ops_sop: '粉丝运营 SOP', whitelabel: '白标导出',
+    };
+    return names[section] || '专业数据';
+  },
+  openPaywallModalFallback() {
+    alert('该数据为专业层（L2），需升级专业版或购买单份深度报告后查看。');
+  },
+
+  // 升级弹层内 tab 切换
+  switchUpgradeTab(tab) {
+    const tabs = document.querySelectorAll('#upgradeModal .upgrade-tab');
+    const panels = document.querySelectorAll('#upgradeModal .upgrade-tab-panel');
+    tabs.forEach(t => t.classList.toggle('active', t.getAttribute('data-upgrade-tab') === tab));
+    panels.forEach(p => p.classList.toggle('active', p.id === 'upgradeTab' + tab.charAt(0).toUpperCase() + tab.slice(1)));
+  },
+
+  // 订阅套餐（Phase 2 接真实支付前，先用「申请开通 + 对公」流程占位）
+  async checkoutPlan(plan) {
+    const names = { personal: 'C 端会员', professional: '专业版' };
+    try {
+      await this.api('/auth/subscribe-intent', { method: 'POST', body: JSON.stringify({ plan, channel: 'manual' }) }).catch(() => ({}));
+    } catch (e) { /* 接口未实现时静默，走本地提示 */ }
+    document.getElementById('upgradeModal').classList.remove('show');
+    alert(`已记录您开通「${names[plan] || plan}」的意向。\n\n（Phase 2 将接入微信/支付宝支付；当前为 MVP，提交后我们将通过手机号与您联系开通并支持对公转账。）`);
+  },
+
+  // 单份深度报告购买意向
+  async checkoutSingleReport() {
+    try {
+      await this.api('/auth/subscribe-intent', { method: 'POST', body: JSON.stringify({ plan: 'single_report', channel: 'manual' }) }).catch(() => ({}));
+    } catch (e) { /* 静默 */ }
+    document.getElementById('upgradeModal').classList.remove('show');
+    alert('已记录单份深度报告购买意向（¥129 起）。\n\nPhase 2 将支持在线支付，当前由我们与您确认艺人范围与报告深度后开通。');
+  },
+
   // ---- Utility ----
   getScoreColor(score) {
     if (score === null || score === undefined) return 'score-pending';
@@ -2166,12 +2286,15 @@ const App = {
               </div>
             </div>
           </div>
-          ${a.risk_summary ? `<div class="card mt-6"><div class="card-header">风险摘要</div><div class="card-body"><p style="font-size:15px;line-height:1.8;color:var(--text-secondary);">${a.risk_summary}</p></div></div>` : ''}
+          ${a.risk_summary && !this.isMasked(a.risk_summary) ? `<div class="card mt-6"><div class="card-header">风险摘要</div><div class="card-body"><p style="font-size:15px;line-height:1.8;color:var(--text-secondary);">${a.risk_summary}</p></div></div>` : ''}
+          ${this.isMasked(a.risk_summary) ? `<div class="card mt-6"><div class="card-header">风险摘要</div><div class="card-body">${this.maskedFieldHtml('风险摘要（L1·会员可见）')}</div></div>` : ''}
+          ${a.deep_insight && !this.isMasked(a.deep_insight) ? `<div class="card mt-6"><div class="card-header">深度洞察分析</div><div class="card-body"><p style="font-size:15px;line-height:1.8;color:var(--text-secondary);">${a.deep_insight}</p></div></div>` : ''}
+          ${this.isMasked(a.deep_insight) ? `<div class="card mt-6"><div class="card-header">深度洞察分析</div><div class="card-body">${this.paywallHtml('risk_events', '深度洞察（L2·含原始情报）')}</div></div>` : ''}
           <div style="text-align:center;margin-top:24px;">
             <button class="btn" style="background:var(--primary-dark);color:#fff;border:none;margin-left:8px;" onclick="App.previewRiskReport(${a.id})">👁 预览报告</button>
             <button class="btn btn-primary" onclick="App.downloadRiskReport(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📥 下载综合档案报告</button>
             <button class="btn" style="background:var(--primary-dark);color:#fff;border:none;margin-left:8px;" onclick="App.downloadRiskReportPDF(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📄 下载PDF</button>
-            <button class="btn" style="background:linear-gradient(135deg,#7C3AED,#DB2777);color:#fff;border:none;margin-left:8px;" onclick="App.openWhitelabelModal(${a.id}, '${a.name.replace(/'/g, "\\'")}')">🎨 白标导出</button>
+            <button class="btn" style="background:linear-gradient(135deg,#7C3AED,#DB2777);color:#fff;border:none;margin-left:8px;" onclick="${this.sectionLocked('whitelabel') ? `App.openUpgradeModal('whitelabel')` : `App.openWhitelabelModal(${a.id}, '${a.name.replace(/'/g, "\\'")}')`}">🎨 白标导出${this.sectionLocked('whitelabel') ? ' 🔒' : ''}</button>
             <button class="btn" style="background:#0EA5E9;color:#fff;border:none;margin-left:8px;" onclick="App.downloadRiskReportDocx(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📝 Word</button>
             <button class="btn" style="background:#F59E0B;color:#fff;border:none;margin-left:8px;" onclick="App.downloadRiskReportPptx(${a.id}, '${a.name.replace(/'/g, "\\'")}')">📊 PPT</button>
             <button class="btn" style="background:linear-gradient(135deg,#059669,#10B981);color:#fff;border:none;margin-left:8px;" onclick="App.openSafetyCard(${a.id})">🛡 安全评分卡</button>
@@ -2195,10 +2318,11 @@ const App = {
                 <tr><td style="color:var(--text-secondary);">星座</td><td>${a.constellation || '-'}</td></tr>
                 <tr><td style="color:var(--text-secondary);">出生地</td><td>${a.birthplace || '-'}</td></tr>
                 ${a.ethnicity ? `<tr><td style="color:var(--text-secondary);">民族</td><td>${a.ethnicity}</td></tr>` : ''}
-                <tr><td style="color:var(--text-secondary);">经纪公司</td><td>${a.agency || '-'}</td></tr>
-                <tr><td style="color:var(--text-secondary);">人设标签</td><td>${a.persona_tags || '-'}</td></tr>
-                <tr><td style="color:var(--text-secondary);">代表作</td><td>${a.masterpieces || '-'}</td></tr>
-                ${a.commercial_quote ? `<tr><td style="color:var(--text-secondary);">商务报价</td><td style="font-weight:600;color:var(--primary);">${a.commercial_quote}</td></tr>` : ''}
+                <tr><td style="color:var(--text-secondary);">经纪公司</td><td>${this.isMasked(a.agency) ? this.maskedFieldHtml('经纪公司（L2·专业版可见）') : (a.agency || '-')}</td></tr>
+                <tr><td style="color:var(--text-secondary);">人设标签</td><td>${this.isMasked(a.persona_tags) ? this.maskedFieldHtml('人设标签') : (a.persona_tags || '-')}</td></tr>
+                <tr><td style="color:var(--text-secondary);">代表作</td><td>${this.isMasked(a.masterpieces) ? this.maskedFieldHtml('代表作') : (a.masterpieces || '-')}</td></tr>
+                ${a.commercial_quote && !this.isMasked(a.commercial_quote) ? `<tr><td style="color:var(--text-secondary);">商务报价</td><td style="font-weight:600;color:var(--primary);">${a.commercial_quote}</td></tr>` : ''}
+                ${this.isMasked(a.commercial_quote) ? `<tr><td style="color:var(--text-secondary);">商务报价</td><td>${this.maskedFieldHtml('商务报价（L1·会员可见）')}</td></tr>` : ''}
                 <tr><td style="color:var(--text-secondary);">数据来源</td><td>${a.data_source || '公开信息'}</td></tr>
               </table></div>
             </div>
@@ -2356,7 +2480,9 @@ const App = {
 
         <!-- Events Tab -->
         <div class="tab-content" id="tab-events">
-          <div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载风险事件...</span></div>
+          ${this.sectionLocked('risk_events')
+            ? this.paywallHtml('risk_events', '风险事件明细（含来源原文）')
+            : '<div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--text-tertiary);margin-left:8px;">加载风险事件...</span></div>'}
         </div>
 
         <!-- Compliance Tab -->
@@ -2786,6 +2912,13 @@ const App = {
 
   // ==================== 粉丝运营 SOP 知识库（独立入口 #sop）====================
   renderSopPage(container) {
+    if (this.sectionLocked('fan_ops_sop')) {
+      container.innerHTML = `<div class="card mb-6"><div class="card-body">
+        <h2 style="font-size:20px;font-weight:700;margin-bottom:4px;">📚 粉丝运营 SOP 知识库</h2>
+        ${this.paywallHtml('fan_ops_sop', '粉丝运营 SOP 全库（AFF 方法论 / 结项报告 / 电商玩法）')}
+      </div></div>`;
+      return;
+    }
     container.innerHTML = `
       <div class="card mb-6">
         <div class="card-body">
@@ -3110,6 +3243,13 @@ const App = {
     if (!id) return;
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) return;
+    if (this.sectionLocked('relation_graph')) {
+      container.innerHTML = `<div class="page-content" style="max-width:1100px;margin:0 auto;padding:var(--space-6);">
+        <h1 style="font-size:24px;font-weight:800;margin-bottom:16px;">🔗 艺人关联图谱</h1>
+        ${this.paywallHtml('relation_graph', '艺人关系图谱与风险传导')}
+      </div>`;
+      return;
+    }
     container.innerHTML = `<div class="page-content" style="max-width:1100px;margin:0 auto;padding:var(--space-6);">
       <div class="flex justify-between items-center mb-4">
         <h1 style="font-size:24px;font-weight:800;">🔗 艺人关联图谱</h1>
@@ -3174,9 +3314,9 @@ const App = {
     return new Promise((resolve, reject) => {
       if (window.vis) return resolve();
       const s = document.createElement('script');
-      s.src = 'https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js';
+      s.src = 'vendor/vis-network.min.js';
       s.onload = () => resolve();
-      s.onerror = () => reject(new Error('vis-network CDN 加载失败'));
+      s.onerror = () => reject(new Error('vis-network 本地加载失败'));
       document.head.appendChild(s);
     });
   },
@@ -3490,6 +3630,7 @@ const App = {
   async loadSalesReports(artistId) {
     const box = document.getElementById('salesReportBox');
     if (!box) return;
+    if (this.sectionLocked('sales_report')) { box.innerHTML = this.paywallHtml('sales_report', '代言战报全量数据'); return; }
     try {
       const [summary, list] = await Promise.all([
         this.api(`/commercial/sales-summary/${artistId}`),
@@ -3505,6 +3646,7 @@ const App = {
   async loadGCV(artistId, brand) {
     const box = document.getElementById('gcvBox');
     if (!box) return;
+    if (this.sectionLocked('gcv_detail')) { box.innerHTML = this.paywallHtml('gcv_detail', 'GCV 公式明细与置信度'); return; }
     let url = `/commercial/gcv/${artistId}`;
     if (brand) {
       const p = [];
