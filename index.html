@@ -7,16 +7,16 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>艺安查 — AI驱动的艺人风险评估平台</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="vendor/chart.umd.min.js"></script>
+<script src="vendor/html2pdf.bundle.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
 <style>
 /* ============================================
    艺安查 Design System v2.0 — 科技感 + 清爽
    ============================================ */
 
-/* === 导入现代字体 === */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* === 字体：改用系统字体栈（已移除 Google Fonts 海外依赖，解决国内白屏/慢）===
+   如需 Inter 视觉，后续可下载 woff2 自托管到 vendor/fonts/ */
 
 :root {
   /* === 主色调 - 科技蓝紫渐变 === */
@@ -1670,6 +1670,33 @@ canvas { max-width: 100%; }
   .event-timeline::before { left: 22px; }
   .timeline-dot { left: 16px; width: 12px; height: 12px; }
 }
+
+/* ===== Phase 1 数据分级 · 付费墙 / 脱敏 ===== */
+.tier-masked { color: var(--text-tertiary,#94A3B8); font-style: italic; font-size:13px; }
+.tier-lock { margin-right:4px; }
+.paywall-card {
+  border: 1.5px dashed #CBD5E1; border-radius: 14px; padding: 28px 22px; text-align: center;
+  background: linear-gradient(180deg,#F8FAFC,#EEF2F7); margin: 8px 0;
+}
+.paywall-lock { font-size: 34px; margin-bottom: 8px; }
+.paywall-title { font-size: 16px; font-weight: 800; color: var(--text-primary,#0F2A4A); margin-bottom: 6px; }
+.paywall-desc { font-size: 13px; color: var(--text-secondary,#475569); line-height: 1.65; max-width: 520px; margin: 0 auto 14px; }
+.paywall-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+.upgrade-tabs { display:flex; gap:8px; margin:14px 0 16px; flex-wrap:wrap; }
+.upgrade-tab { flex:1; min-width:90px; text-align:center; padding:9px 6px; border:1px solid var(--border,#E2E8F0); border-radius:10px; font-size:13px; font-weight:600; color:var(--text-secondary,#475569); cursor:pointer; background:#fff; }
+.upgrade-tab.active { border-color: var(--primary,#2563EB); color: var(--primary,#2563EB); background:#EFF6FF; }
+.upgrade-tab-panel { display:none; }
+.upgrade-tab-panel.active { display:block; animation: fade .2s ease; }
+.upgrade-plan-card { border:1px solid var(--border,#E2E8F0); border-radius:14px; padding:18px; background:#fff; }
+.upgrade-plan-card.up-pro { border-color:#7C3AED; }
+.upgrade-plan-card.up-single { border-color:#0EA5E9; }
+.up-name { font-size:15px; font-weight:700; margin-bottom:6px; }
+.up-price { font-size:24px; font-weight:800; color:var(--primary,#2563EB); margin-bottom:12px; }
+.up-pro .up-price { color:#7C3AED; }
+.up-single .up-price { color:#0EA5E9; }
+.up-perks { list-style:none; margin:0 0 14px; padding:0; }
+.up-perks li { font-size:13px; color:var(--text-secondary,#475569); padding:5px 0; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -1795,11 +1822,52 @@ canvas { max-width: 100%; }
       <button class="modal-close" onclick="document.getElementById('upgradeModal').classList.remove('show')">×</button>
     </div>
     <div class="modal-body">
-      <p class="text-sm text-secondary">免费用户每日仅可查看 <strong>5</strong> 位艺人详情，升级专业版可<strong>无限查看</strong>并解锁全部深度分析。</p>
-      <div id="upgradePlanList" class="upgrade-plan-list"><!-- 由 /auth/plans 动态渲染 --></div>
-      <button class="btn btn-primary btn-block btn-lg" type="button" onclick="App.loadPlans()">查看完整套餐与权益</button>
+      <p class="text-sm text-secondary">艺安查实行<strong>数据分级</strong>：基础风险分等 L0 数据免费公开；风险四维新解、GCV 概览等 L1 数据需会员；风险事件明细、GCV 公式、带货 GMV、代言战报、关系图谱、SOP 等 L2 专业数据需专业版 / 企业版<span id="upgradeSectionName"></span>。</p>
+      <div class="upgrade-tabs">
+        <div class="upgrade-tab active" data-upgrade-tab="member" onclick="App.switchUpgradeTab('member')">⭐ 会员 ¥39/月</div>
+        <div class="upgrade-tab" data-upgrade-tab="pro" onclick="App.switchUpgradeTab('pro')">🏅 专业 ¥99/月</div>
+        <div class="upgrade-tab" data-upgrade-tab="single" onclick="App.switchUpgradeTab('single')">📄 单份报告 ¥129</div>
+      </div>
+      <div id="upgradeTabMember" class="upgrade-tab-panel active">
+        <div class="upgrade-plan-card">
+          <div class="up-name">⭐ C 端会员（个人）</div>
+          <div class="up-price">¥39<span style="font-size:13px;font-weight:500;">/月 · ¥365/年</span></div>
+          <ul class="up-perks">
+            <li>✅ L0+L1 全量：风险四维新解、GCV 概览、粉丝健康度</li>
+            <li>✅ 个人监控 5 位艺人</li>
+            <li>✅ 每月 5 份 PDF 报告</li>
+            <li>⛔ 不含 L2 专业数据（事件明细/GMV/战报/图谱）</li>
+          </ul>
+          <button class="btn btn-primary btn-block" type="button" onclick="App.checkoutPlan('personal')">立即开通会员</button>
+        </div>
+      </div>
+      <div id="upgradeTabPro" class="upgrade-tab-panel">
+        <div class="upgrade-plan-card up-pro">
+          <div class="up-name">🏅 专业会员（个人从业者）</div>
+          <div class="up-price">¥99<span style="font-size:13px;font-weight:500;">/月 · ¥999/年</span></div>
+          <ul class="up-perks">
+            <li>✅ 含会员全部权益</li>
+            <li>✅ 解锁部分 L2：监控 20 艺人、导出 20 份/月</li>
+            <li>✅ 去水印、粉丝运营 SOP 库、带货力概览</li>
+            <li>🏢 B 端模块（M1–M8 无限查询）请联系商务开通企业版</li>
+          </ul>
+          <button class="btn btn-primary btn-block" type="button" onclick="App.checkoutPlan('professional')">立即开通专业版</button>
+        </div>
+      </div>
+      <div id="upgradeTabSingle" class="upgrade-tab-panel">
+        <div class="upgrade-plan-card up-single">
+          <div class="up-name">📄 单份深度报告（一次性）</div>
+          <div class="up-price">¥129<span style="font-size:13px;font-weight:500;">起 · 视深度 ¥129–299</span></div>
+          <ul class="up-perks">
+            <li>✅ 一次性解锁 1 位艺人 L2 深度报告</li>
+            <li>✅ 含风险事件明细 + GCV 公式明细 + 战报</li>
+            <li>✅ 无需订阅，按需购买</li>
+          </ul>
+          <button class="btn btn-primary btn-block" type="button" onclick="App.checkoutSingleReport()">购买单份报告</button>
+        </div>
+      </div>
       <div style="margin-top:12px; text-align:center;">
-        <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('upgradeModal').classList.remove('show'); App.openBusinessModal();">📝 申请开通专业版 / 商务合作</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('upgradeModal').classList.remove('show'); App.openBusinessModal();">🏢 申请 B 端企业版 / 商务合作</button>
       </div>
     </div>
   </div>
@@ -2168,6 +2236,6 @@ canvas { max-width: 100%; }
   <button class="btn btn-sm" style="background:transparent; color:rgba(255,255,255,0.8); border:none; padding:6px 10px;" onclick="document.getElementById('updateBanner').style.display='none'">稍后</button>
 </div>
 
-<script src="app.min.js?v=2.10.3"></script>
+<script src="app.min.js?v=2.11.0"></script>
 </body>
 </html>
